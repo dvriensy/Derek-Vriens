@@ -8,15 +8,20 @@ import { motion } from "motion/react";
 import { CheckCircle2, ChevronRight, DraftingCompass, MapPin, Ruler, Wind, FileText, Download, AlertCircle, Wrench, Zap, Clock, ScanText, Search } from "lucide-react";
 import { AirBalanceData } from "../types";
 import { generateAirBalanceReport } from "../lib/pdfReport";
+import { ExecutiveSummary } from "./ExecutiveSummary";
+import { cn } from "../lib/utils";
 
 interface DashboardProps {
   data: AirBalanceData;
   sourceFileName: string;
   onUpdateData?: (data: AirBalanceData) => void;
   fileCount?: number;
+  hideAIAuditSections?: boolean;
 }
 
-export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: DashboardProps) {
+export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideAIAuditSections }: DashboardProps) {
+  const [completedFindings, setCompletedFindings] = React.useState<string[]>([]);
+
   const isMetric = data.projectIdentity.measurementUnits === 'Metric (L/s)';
   const convertToCfm = (ls: number) => ls * 2.119;
 
@@ -31,6 +36,12 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
       );
       onUpdateData(newData);
     }
+  };
+
+  const toggleCriticalDeficiency = (def: string) => {
+    setCompletedFindings(prev => 
+      prev.includes(def) ? prev.filter(d => d !== def) : [...prev, def]
+    );
   };
 
   const vavSummationData = data.equipmentSchedules?.vavSummation || { discrepancy: 0, mainUnitCfm: 0, totalVavCfm: 0, mathString: '' };
@@ -65,9 +76,12 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
         </button>
       </div>
       
+      {data.executiveSummary && <ExecutiveSummary summary={data.executiveSummary} />}
+      
       {/* Pre-Balance Readiness Summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-        <div className="lg:col-span-2 space-y-6">
+      {!hideAIAuditSections && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+          <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center gap-4 border-b border-white/10 pb-4">
             <h2 className="text-2xl font-bold font-serif tracking-tight text-white">Pre-TAB Readiness Audit</h2>
             <span className={cn(
@@ -108,12 +122,32 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
             <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500">Critical Deficiencies</h3>
             <div className="space-y-3">
               {(data.preBalanceReadiness?.criticalDeficiencies || []).length > 0 ? (
-                data.preBalanceReadiness?.criticalDeficiencies.map((def, i) => (
-                  <div key={i} className="flex gap-3 items-start text-red-400">
-                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    <p className="text-[11px] leading-relaxed font-medium">{def}</p>
-                  </div>
-                ))
+                data.preBalanceReadiness?.criticalDeficiencies.map((def, i) => {
+                  const isDone = completedFindings.includes(def);
+                  return (
+                    <div 
+                      key={i} 
+                      onClick={() => toggleCriticalDeficiency(def)}
+                      className={cn(
+                        "flex gap-3 items-start cursor-pointer transition-all",
+                        isDone ? "text-zinc-600 grayscale opacity-40" : "text-red-400 group"
+                      )}
+                    >
+                      <div className={cn(
+                        "flex-shrink-0 w-4 h-4 rounded-full border flex items-center justify-center mt-0.5",
+                        isDone ? "bg-emerald-500 border-emerald-500 text-white" : "border-red-500/30 group-hover:border-red-400"
+                      )}>
+                        {isDone ? <CheckCircle2 className="w-2.5 h-2.5" /> : <AlertCircle className="w-3 h-3" />}
+                      </div>
+                      <p className={cn(
+                        "text-[11px] leading-relaxed font-medium transition-all",
+                        isDone ? "line-through" : ""
+                      )}>
+                        {def}
+                      </p>
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-[11px] text-zinc-600 italic">No critical deficiencies identified in the current documentation.</p>
               )}
@@ -139,6 +173,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
           </div>
         </div>
       </div>
+      )}
 
       {/* 1. Project Identity - Column Layout */}
       <div className="border-t border-white/5 divide-y divide-white/5 text-[#F5F5F4]">
@@ -218,8 +253,9 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
         </div>
 
         {/* 3. TAB Specs & Logistics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start">
-          <div className="col-span-1">
+        {!hideAIAuditSections && (
+          <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start">
+            <div className="col-span-1">
             <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-400 mb-4 md:mb-0">03. Specs & Logistics</h3>
           </div>
           <div className="col-span-3 space-y-12">
@@ -285,6 +321,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
             </div>
           </div>
         </div>
+      )}
 
         {/* 4. Schedules */}
         <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start">
@@ -399,8 +436,9 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
         </div>
 
         {/* 5. Shop Drawings */}
-        <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
-          <div className="col-span-1">
+        {!hideAIAuditSections && (
+          <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
+            <div className="col-span-1">
             <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0">05. Shop Drawings</h3>
           </div>
           <div className="col-span-3">
@@ -435,6 +473,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
              </div>
           </div>
         </div>
+        )}
 
         {/* 6. Diversity Audit */}
         <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
@@ -520,8 +559,9 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
         </div>
 
         {/* 8. Hardware Index */}
-        <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
-          <div className="col-span-1">
+        {!hideAIAuditSections && (
+          <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
+            <div className="col-span-1">
             <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0">08. Hardware Index</h3>
           </div>
           <div className="col-span-3 grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -562,10 +602,12 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
             </div>
           </div>
         </div>
+        )}
 
         {/* 9. Strategy */}
-        <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
-          <div className="col-span-1">
+        {!hideAIAuditSections && (
+          <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
+            <div className="col-span-1">
             <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0">09. Field Tactics</h3>
           </div>
           <div className="col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -655,104 +697,107 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
             </div>
           </div>
         </div>
+        )}
 
         {/* 6. Field Data Sheets (Outlet Sheets) */}
-        <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
-          <div className="col-span-1">
-            <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0">06. Field Data Sheets</h3>
-          </div>
-          <div className="col-span-3 space-y-16">
-            {(data.equipmentSchedules?.units || []).filter(u => u.outlets && u.outlets.length > 0).map((unit, i) => {
-              const totalOutletVol = unit.outlets?.reduce((acc, o) => acc + o.designVolume, 0) || 0;
-              const unitVariance = unit.designCfm > 0 ? Math.abs(((totalOutletVol - unit.designCfm) / unit.designCfm) * 100) : 0;
-              const hasTerminalDiscrepancy = unitVariance > 5;
+        {!hideAIAuditSections && (
+          <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
+            <div className="col-span-1">
+              <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0">06. Field Data Sheets</h3>
+            </div>
+            <div className="col-span-3 space-y-16">
+              {(data.equipmentSchedules?.units || []).filter(u => u.outlets && u.outlets.length > 0).map((unit, i) => {
+                const totalOutletVol = unit.outlets?.reduce((acc, o) => acc + o.designVolume, 0) || 0;
+                const unitVariance = unit.designCfm > 0 ? Math.abs(((totalOutletVol - unit.designCfm) / unit.designCfm) * 100) : 0;
+                const hasTerminalDiscrepancy = unitVariance > 5;
 
-              return (
-                <div key={i} className="space-y-6">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                    <div className="flex items-center gap-3">
-                       <FileText className="w-5 h-5 text-zinc-500" />
-                       <h4 className="text-lg font-bold font-mono tracking-tighter text-[#F5F5F4]">{unit.tag} Outlet Sheet</h4>
-                    </div>
-                    <div className={cn(
-                      "px-3 py-1 text-[10px] font-bold uppercase rounded-full",
-                      hasTerminalDiscrepancy ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-500"
-                    )}>
-                      {hasTerminalDiscrepancy ? "Variation Flagged" : "Balanced Design"}
-                    </div>
-                  </div>
-
-                  <div className="border border-white/5 rounded-sm p-1 bg-[#141414] shadow-sm overflow-hidden">
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-white/5">
-                        <tr className="text-zinc-500 uppercase text-[9px] tracking-wider font-bold">
-                          <th className="p-3 w-20">Outlet #</th>
-                          <th className="p-3">Register Type</th>
-                          <th className="p-3">Duct Size</th>
-                          <th className="p-3 text-right">Design ({isMetric ? 'L/s' : 'CFM'})</th>
-                          <th className="p-3 w-32 border-l border-white/5 bg-white/5">Field Reading</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
-                        {unit.outlets?.map((outlet, oi) => (
-                          <tr key={oi} className="hover:bg-white/[0.02] transition-colors">
-                            <td className="p-3 font-mono text-zinc-500 font-bold">{outlet.outletNumber}</td>
-                            <td className="p-3 text-zinc-300 font-medium">{outlet.registerType || '-'}</td>
-                            <td className="p-3 text-zinc-500 font-mono">{outlet.ductSize || '-'}</td>
-                            <td className="p-3 text-right font-mono font-bold text-white">{outlet.designVolume.toLocaleString()}</td>
-                            <td className="p-3 border-l border-white/5 bg-black/20 text-zinc-700 italic text-[10px] text-center">
-                              ________________
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-white/5">
-                        <tr className="border-t-2 border-white/5 font-bold">
-                          <td colSpan={3} className="p-3 text-right uppercase text-[9px] tracking-widest text-zinc-500">Total System Design</td>
-                          <td className="p-3 text-right font-mono text-base text-white">{totalOutletVol.toLocaleString()}</td>
-                          <td className="bg-black/40"></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-
-                  <div className="flex gap-12 items-start bg-black p-6 rounded-sm text-[#F5F5F4] border-t-2 border-amber-500/30">
-                    <div className="space-y-1">
-                      <p className="text-[9px] uppercase tracking-[0.2em] opacity-40 font-bold text-amber-500">Unit Discharge Total</p>
-                      <p className="text-xl font-mono font-bold">{unit.designCfm.toLocaleString()} <span className="text-[10px] font-normal opacity-40">{isMetric ? 'L/s' : 'CFM'}</span></p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[9px] uppercase tracking-[0.2em] opacity-40 font-bold">Sum of Outlets</p>
-                      <p className="text-xl font-mono font-bold">{totalOutletVol.toLocaleString()} <span className="text-[10px] font-normal opacity-40">{isMetric ? 'L/s' : 'CFM'}</span></p>
-                    </div>
-                    <div className="space-y-1 flex-grow">
-                      <p className="text-[9px] uppercase tracking-[0.2em] opacity-40 font-bold">Discrepancy Audit</p>
-                      <div className="flex items-center gap-3 mt-1">
-                        <p className={cn(
-                          "text-xl font-mono font-bold",
-                          hasTerminalDiscrepancy ? "text-red-400" : "text-emerald-400"
-                        )}>
-                          {unitVariance.toFixed(1)}%
-                        </p>
-                        <span className={cn(
-                          "px-2 py-0.5 text-[8px] font-bold uppercase rounded-sm border",
-                          hasTerminalDiscrepancy 
-                            ? "bg-red-400/10 border-red-400/30 text-red-400" 
-                            : "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
-                        )}>
-                          {hasTerminalDiscrepancy ? "Design Failure" : "Passed"}
-                        </span>
+                return (
+                  <div key={i} className="space-y-6">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                      <div className="flex items-center gap-3">
+                         <FileText className="w-5 h-5 text-zinc-500" />
+                         <h4 className="text-lg font-bold font-mono tracking-tighter text-[#F5F5F4]">{unit.tag} Outlet Sheet</h4>
                       </div>
-                      {unit.outletMathString && (
-                        <p className="text-[10px] font-mono text-zinc-500 mt-2 font-bold tracking-tight">Σ {unit.outletMathString}</p>
-                      )}
+                      <div className={cn(
+                        "px-3 py-1 text-[10px] font-bold uppercase rounded-full",
+                        hasTerminalDiscrepancy ? "bg-red-500/10 text-red-500" : "bg-emerald-500/10 text-emerald-500"
+                      )}>
+                        {hasTerminalDiscrepancy ? "Variation Flagged" : "Balanced Design"}
+                      </div>
+                    </div>
+
+                    <div className="border border-white/5 rounded-sm p-1 bg-[#141414] shadow-sm overflow-hidden">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="bg-white/5">
+                          <tr className="text-zinc-500 uppercase text-[9px] tracking-wider font-bold">
+                            <th className="p-3 w-20">Outlet #</th>
+                            <th className="p-3">Register Type</th>
+                            <th className="p-3">Duct Size</th>
+                            <th className="p-3 text-right">Design ({isMetric ? 'L/s' : 'CFM'})</th>
+                            <th className="p-3 w-32 border-l border-white/5 bg-white/5">Field Reading</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.03]">
+                          {unit.outlets?.map((outlet, oi) => (
+                            <tr key={oi} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="p-3 font-mono text-zinc-500 font-bold">{outlet.outletNumber}</td>
+                              <td className="p-3 text-zinc-300 font-medium">{outlet.registerType || '-'}</td>
+                              <td className="p-3 text-zinc-500 font-mono">{outlet.ductSize || '-'}</td>
+                              <td className="p-3 text-right font-mono font-bold text-white">{outlet.designVolume.toLocaleString()}</td>
+                              <td className="p-3 border-l border-white/5 bg-black/20 text-zinc-700 italic text-[10px] text-center">
+                                ________________
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-white/5">
+                          <tr className="border-t-2 border-white/5 font-bold">
+                            <td colSpan={3} className="p-3 text-right uppercase text-[9px] tracking-widest text-zinc-500">Total System Design</td>
+                            <td className="p-3 text-right font-mono text-base text-white">{totalOutletVol.toLocaleString()}</td>
+                            <td className="bg-black/40"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <div className="flex gap-12 items-start bg-black p-6 rounded-sm text-[#F5F5F4] border-t-2 border-amber-500/30">
+                      <div className="space-y-1">
+                        <p className="text-[9px] uppercase tracking-[0.2em] opacity-40 font-bold text-amber-500">Unit Discharge Total</p>
+                        <p className="text-xl font-mono font-bold">{unit.designCfm.toLocaleString()} <span className="text-[10px] font-normal opacity-40">{isMetric ? 'L/s' : 'CFM'}</span></p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[9px] uppercase tracking-[0.2em] opacity-40 font-bold">Sum of Outlets</p>
+                        <p className="text-xl font-mono font-bold">{totalOutletVol.toLocaleString()} <span className="text-[10px] font-normal opacity-40">{isMetric ? 'L/s' : 'CFM'}</span></p>
+                      </div>
+                      <div className="space-y-1 flex-grow">
+                        <p className="text-[9px] uppercase tracking-[0.2em] opacity-40 font-bold">Discrepancy Audit</p>
+                        <div className="flex items-center gap-3 mt-1">
+                          <p className={cn(
+                            "text-xl font-mono font-bold",
+                            hasTerminalDiscrepancy ? "text-red-400" : "text-emerald-400"
+                          )}>
+                            {unitVariance.toFixed(1)}%
+                          </p>
+                          <span className={cn(
+                            "px-2 py-0.5 text-[8px] font-bold uppercase rounded-sm border",
+                            hasTerminalDiscrepancy 
+                              ? "bg-red-400/10 border-red-400/30 text-red-400" 
+                              : "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
+                          )}>
+                            {hasTerminalDiscrepancy ? "Design Failure" : "Passed"}
+                          </span>
+                        </div>
+                        {unit.outletMathString && (
+                          <p className="text-[10px] font-mono text-zinc-500 mt-2 font-bold tracking-tight">Σ {unit.outletMathString}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       
       {/* 10. Technical OCR Discovery Feed */}
@@ -767,7 +812,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
            <div className="p-6 bg-emerald-500/5 border border-emerald-500/10 rounded-sm">
               <div className="flex items-center gap-2 mb-3">
                 <Search className="w-4 h-4 text-emerald-400" />
-                <p className="text-[9px] uppercase font-bold text-emerald-400 tracking-widestAlpha">Document DNA Discovery</p>
+                <p className="text-[9px] uppercase font-bold text-emerald-400 tracking-widest">Document DNA Discovery</p>
               </div>
               <p className="text-sm italic leading-relaxed text-zinc-300">
                 {data.ocrInsight || "Analysis of document structure identifies high-confidence schedule blocks and technical note clusters."}
@@ -782,13 +827,13 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
                 </pre>
               </div>
               <p className="text-[9px] text-zinc-600 italic">
-                Note: This transcript is an extraction of technical schedules, legend blocks, and specification snippets used for cross-reference.
-              </p>
-           </div>
-        </div>
-      </div>
+               Note: This transcript is an extraction of technical schedules, legend blocks, and specification snippets used for cross-reference.
+             </p>
+          </div>
+       </div>
     </div>
-  );
+  </div>
+);
 }
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
@@ -814,8 +859,4 @@ function DataField({ label, value }: { label: string; value?: string | number })
       </p>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

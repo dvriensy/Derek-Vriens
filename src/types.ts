@@ -87,9 +87,17 @@ export interface AirBalanceData {
   };
   ocrInsight?: string; // High-level technical discovery of the document
   rawTextFeed?: string; // Raw text transcript extracted from the PDF
+  executiveSummary?: ExecutiveSummary;
   
   // Excel Audit specific field
   excelAudit?: ExcelAuditReport;
+}
+
+export interface ExecutiveSummary {
+  keyFindings: string[];
+  majorRedFlags: string[];
+  complianceStatus: 'Compliant' | 'Non-Compliant' | 'Conditional';
+  overview: string;
 }
 
 export interface ExcelAuditReport {
@@ -101,12 +109,14 @@ export interface ExcelAuditReport {
   };
   findings: ExcelFinding[];
   questionsForEngineer: string[];
+  spellingAndPunctuationIssues?: { message: string, location: string }[];
   suggestedChanges: {
     originalValue: string;
     proposedValue: string;
     location: string; // e.g. "Sheet1!B5"
     reason: string;
   }[];
+  executiveSummary?: ExecutiveSummary;
 }
 
 export interface ExcelFinding {

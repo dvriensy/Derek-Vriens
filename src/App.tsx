@@ -520,6 +520,7 @@ export default function App() {
                         sourceFileName={files.length > 0 ? files[0].name : 'Unknown_File'} 
                         onUpdateData={(updated) => setData({ ...updated })}
                         fileCount={files.length}
+                        hideAIAuditSections={true}
                       />
                    </div>
                 </div>

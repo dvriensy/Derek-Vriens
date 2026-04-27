@@ -197,6 +197,16 @@ export const AIR_BALANCE_SCHEMA = {
     },
     ocrInsight: { type: Type.STRING, description: "A technical summary of the 'DNA' of the document, including OCR confidence and key recurring patterns." },
     rawTextFeed: { type: Type.STRING, description: "A comprehensive extraction of all technical text, focusing on schedules, notes, and specification blocks." },
+    executiveSummary: {
+      type: Type.OBJECT,
+      properties: {
+        keyFindings: { type: Type.ARRAY, items: { type: Type.STRING } },
+        majorRedFlags: { type: Type.ARRAY, items: { type: Type.STRING } },
+        complianceStatus: { type: Type.STRING, enum: ['Compliant', 'Non-Compliant', 'Conditional'] },
+        overview: { type: Type.STRING, description: "A high-level executive summary of the entire audit findings." },
+      },
+      required: ["keyFindings", "majorRedFlags", "complianceStatus", "overview"],
+    },
   },
 };
 
@@ -227,6 +237,18 @@ export const EXCEL_AUDIT_SCHEMA = {
       },
     },
     questionsForEngineer: { type: Type.ARRAY, items: { type: Type.STRING } },
+    spellingAndPunctuationIssues: { 
+      type: Type.ARRAY, 
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          message: { type: Type.STRING },
+          location: { type: Type.STRING }
+        },
+        required: ["message", "location"]
+      },
+      description: "List of spelling, grammar, and punctuation errors found in the report, including their exact cell location (e.g. Sheet1!B5)."
+    },
     suggestedChanges: {
       type: Type.ARRAY,
       items: {
@@ -239,6 +261,16 @@ export const EXCEL_AUDIT_SCHEMA = {
         },
         required: ["originalValue", "proposedValue", "location", "reason"],
       },
+    },
+    executiveSummary: {
+      type: Type.OBJECT,
+      properties: {
+        keyFindings: { type: Type.ARRAY, items: { type: Type.STRING } },
+        majorRedFlags: { type: Type.ARRAY, items: { type: Type.STRING } },
+        complianceStatus: { type: Type.STRING, enum: ['Compliant', 'Non-Compliant', 'Conditional'] },
+        overview: { type: Type.STRING, description: "A high-level executive summary of the entire audit findings." },
+      },
+      required: ["keyFindings", "majorRedFlags", "complianceStatus", "overview"],
     },
   },
 };
@@ -256,14 +288,21 @@ export async function auditExcelReport(excelData: any[], retryCount = 0): Promis
     Task: Audit the following Air Balance Report (Excel Data).
     
     Audit Constraints:
-    1. TOLERANCE CHECK: Verify if (Actual / Design) falls within [0.90, 1.10] range. Flag any outliers as 'Tolerance' issues.
-    2. SPELLING & PROFESSIONALISM: Check for professional clarity, punctuation, typos in unit tags, and technical terminology errors. Treat these as "Red Flags" if they impact the professional look of the final deliverable.
+    1. THREE-PASS RIGOR: You MUST perform the audit in three distinct internal passes to ensure absolute coverage:
+       - PASS 1: Engineering Logic & Totals Reconciliation (Verify summations, check for lazy balancing/duplicates).
+       - PASS 2: Technical Precision & TAB Compliance (Analyze tolerances, instrumentation, and spec alignment).
+       - PASS 3: Professionalism & Clarity (Spelling, grammar, technical terminology, and presentation).
+       LIST ALL identified errors found during these three passes without exception. No error is too small to record.
+    2. TOLERANCE CHECK: Verify if (Actual / Design) falls within [0.90, 1.10] range. Flag any outliers as 'Tolerance' issues.
+    2. SPELLING & PROFESSIONALISM: Identify specific spelling mistakes, punctuation errors, and professional terminology typos. For EVERY issue found, you MUST provide the exact cell location (Sheet!Cell). Extract these into the 'spellingAndPunctuationIssues' category.
     3. ENGINEERING LOGIC: 
        - Do the totals make sense? (e.g., Sum of outlets vs main unit).
        - Are there suspicious duplicate values (lazy balancing)?
-    4. RED FLAGS: Explicitly identify anything that would make an engineer reject this report (missing data, huge discrepancies, sloppy formatting).
-    5. QUESTIONS: Formulate strategic questions for the field balancer based on anomalies found.
-    6. SUGGESTED CHANGES: Propose exact cell updates for identified errors.
+    4. RED FLAGS: Explicitly identify anything that would make an engineer reject this report (missing data, huge discrepancies, sloppy formatting). Highlight these as "Critical" or "High" severity findings.
+    5. ORANGE FLAGS: Any minor engineering logic inconsistencies or professional clarity issues should be categorized with "Medium" or "Low" severity, which will be visualized as Orange/Amber warnings.
+    6. EXCLUSION: Do NOT mention or audit calibration dates for equipment. This is a recurring request to ignore these data points.
+    7. EXECUTIVE SUMMARY: Generate a concise summary for stakeholders including overall compliance status, key takeaways, and major red flags.
+    8. TERMINATION: Do NOT provide 'Suggested Changes' or 'Strategic Questions' sections. Focus purely on the audit logs and spelling cleanup.
 
     Data Source (JSON representation of Excel Sheets):
     ${excelContext}
@@ -311,14 +350,16 @@ export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): 
     1. PROJECT IDENTITY & DNA: Extract site address, project name, engineering firm, and specifically classify the HVAC architecture (e.g., VAV with Reheat, RTU with CAV, HRV).
     2. GLOBAL AIR BALANCE RECONCILIATION: Perform a high-level "sanity check." Aggregate total volumes category (Supply, Return, Exhaust). Compare Total Design Volume of all equipment against any Diversified Totals listed. ALSO aggregate and extract TOTAL OUTDOOR AIR (OA) volumes per system type.
     3. TAB SPEC COMPLIANCE (Section 23 05 93): Scan for tolerances (e.g., +/- 5% or 10%), Certifications (AABC or NEBB), and mandated Instrumentation (e.g., Pitot tubes).
-    4. FIRE DAMPER DROP TESTING: Specifically scan job notes and specifications for requirements regarding "Fire Damper Drop Testing" or "Smoke Damper Verification."
+    4. FIRE DAMPER DROP TESTING: Specifically scan job notes and specifications for requirements regarding "Fire Damper Drop Testing" or "Smoke Damper Verification." This is mandatory for job site compliance audit.
     5. SOUND READINGS: Check if "Sound Pressure Level Readings" or "NC Level Verification" are required in specific rooms or building-wide.
-    6. MATH SUMMATION AUDIT: Provide an explicit math string for every unit's outlet summation (e.g., "75 + 50 + 50 + 50 = 225"). Compare this sum to the unit's rated capacity. Flag any variance > 5%. 
+    6. EXCLUSION: Do NOT mention or extract calibration dates for any equipment. This is a specific request to keep the report concise.
+    7. MATH SUMMATION AUDIT: Provide an explicit math string for every unit's outlet summation (e.g., "75 + 50 + 50 + 50 = 225"). Compare this sum to the unit's rated capacity. Flag any variance > 5%. 
        IMPORTANT: For CAV (Constant Air Volume) systems where terminal boxes (VAVs) are absent, the 'totalVavCfm' (Terminal Box Sum) must NOT be 0; instead, it must be the aggregate sum of ALL individual outlets (diffusers/grilles) listed. Ensure 'mathString' reflects this addition.
-    7. SHOP DRAWING VERIFICATION: Cross-reference design drawings with contractor submittals. Check if equipment matches airflow and physical requirements (like inlet sizes).
-    8. DIVERSITY AUDIT: Calculate the ratio of total peak flow of all outlets to unit capacity. If ratio is >105% and no "Diversity Note" exists, flag as Capacity Risk.
-    9. PRESSURE PATH ANALYSIS: Compare External Static Pressure (ESP) in schedules to ductwork complexity (long runs, excessive elbows) on plans. Flag Bottleneck Risks.
-    10. HARDWARE INDEX: Identify presence of Manual Volume Dampers (MVDs) for balanceability and specify Pitot Traverse locations for accurate measurements.
+    8. SHOP DRAWING VERIFICATION: Cross-reference design drawings with contractor submittals. Check if equipment matches airflow and physical requirements (like inlet sizes).
+    9. DIVERSITY AUDIT: Calculate the ratio of total peak flow of all outlets to unit capacity. If ratio is >105% and no "Diversity Note" exists, flag as Capacity Risk.
+    10. PRESSURE PATH ANALYSIS: Compare External Static Pressure (ESP) in schedules to ductwork complexity (long runs, excessive elbows) on plans. Flag Bottleneck Risks.
+    11. HARDWARE INDEX: Identify presence of Manual Volume Dampers (MVDs) for balanceability and specify Pitot Traverse locations for accurate measurements.
+    12. EXECUTIVE SUMMARY: Generate a high-level summary for leadership highlighting the critical path forward, major project risks, and overall drawing compliance.
 
     TECHNICAL OCR & DOCUMENT DISCOVERY:
     - Perform a "Digital Scan" to extract all technical text from schedules, legends, and specification blocks.

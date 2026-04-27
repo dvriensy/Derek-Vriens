@@ -18,7 +18,8 @@ import {
   MessageSquare,
   FileSpreadsheet
 } from 'lucide-react';
-import { AirBalanceData, ExcelAuditReport, ExcelFinding } from '../types';
+import { AirBalanceData, ExcelAuditReport, ExcelFinding, ExecutiveSummary as ExecutiveSummaryType } from '../types';
+import { ExecutiveSummary } from './ExecutiveSummary';
 import { cn } from '../lib/utils';
 
 interface ExcelAuditViewProps {
@@ -31,6 +32,8 @@ export function ExcelAuditView({ data, excelData }: ExcelAuditViewProps) {
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
   const [completedQuestions, setCompletedQuestions] = useState<number[]>([]);
+  const [completedSpellingExtras, setCompletedSpellingExtras] = useState<number[]>([]);
+  const [completedFindings, setCompletedFindings] = useState<number[]>([]);
 
   if (!audit) return null;
 
@@ -38,6 +41,18 @@ export function ExcelAuditView({ data, excelData }: ExcelAuditViewProps) {
   
   const toggleQuestion = (idx: number) => {
     setCompletedQuestions(prev => 
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const toggleSpelling = (idx: number) => {
+    setCompletedSpellingExtras(prev => 
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const toggleFinding = (idx: number) => {
+    setCompletedFindings(prev => 
       prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
     );
   };
@@ -83,6 +98,11 @@ export function ExcelAuditView({ data, excelData }: ExcelAuditViewProps) {
 
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Executive Summary Section */}
+      {audit.executiveSummary && (
+        <ExecutiveSummary summary={audit.executiveSummary} />
+      )}
+
       {/* 1. Executive Summary Bar */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <SummaryCard 
@@ -137,9 +157,9 @@ export function ExcelAuditView({ data, excelData }: ExcelAuditViewProps) {
             </div>
           </div>
           <div className="flex items-center gap-6">
-             <LegendItem color="bg-red-500/20" label="Hard Failure" />
-             <LegendItem color="bg-amber-500/10" label="Logic Warning" />
-             <LegendItem color="bg-blue-500/40" label="Cell Focus" />
+             <LegendItem color="bg-red-500/40" label="Hard Failure" />
+             <LegendItem color="bg-orange-500/30" label="Audit Finding" />
+             <LegendItem color="bg-blue-500/60" label="Proposed Fix" />
           </div>
         </div>
 
@@ -162,11 +182,11 @@ export function ExcelAuditView({ data, excelData }: ExcelAuditViewProps) {
                         className={cn(
                           "px-4 py-2 text-xs font-mono border-r border-white/[0.02] min-w-[120px] relative group transition-all duration-300",
                           cell === null || cell === undefined ? "text-zinc-800" : "text-zinc-400",
-                          finding?.severity === 'Critical' ? "bg-red-500/20 text-red-100 ring-1 ring-red-500/50" :
-                          finding?.severity === 'High' ? "bg-orange-500/15 text-orange-100" :
-                          finding ? "bg-amber-500/5 text-amber-200" : "",
-                          suggestion ? "bg-blue-500/5 border-l-2 border-l-blue-500/30" : "",
-                          isHighlighted ? "ring-2 ring-blue-500 ring-inset bg-blue-500/20 z-10" : "",
+                          finding?.severity === 'Critical' ? "bg-red-500/30 text-red-100 ring-1 ring-red-500/50" :
+                          finding?.severity === 'High' ? "bg-orange-500/25 text-orange-100 ring-1 ring-orange-500/30" :
+                          finding ? "bg-orange-500/10 text-orange-200" : 
+                          suggestion ? "bg-blue-500/10 border-l-2 border-l-blue-500/50" : "",
+                          isHighlighted ? "ring-2 ring-blue-500 ring-inset bg-blue-500/30 z-10 scale-[1.02]" : "",
                           finding?.severity === 'Critical' && "animate-pulse"
                         )}
                       >
@@ -210,85 +230,123 @@ export function ExcelAuditView({ data, excelData }: ExcelAuditViewProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* 3. Deep Engineering Questions */}
-        <div className="space-y-6">
+      {/* 3. Spelling & Punctuation Audit */}
+      {audit.spellingAndPunctuationIssues && audit.spellingAndPunctuationIssues.length > 0 && (
+        <div className="space-y-6 pt-4">
           <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 flex items-center gap-2">
-            <MessageSquare className="w-3 h-3" />
-            Engineering Inquiry Logic
+            <PenTool className="w-3 h-3" />
+            Spelling & Punctuation Cleanup
           </h3>
-          <div className="space-y-3">
-            {audit.questionsForEngineer.map((question, idx) => {
-              const isDone = completedQuestions.includes(idx);
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {audit.spellingAndPunctuationIssues.map((issue, idx) => {
+              const isDone = completedSpellingExtras.includes(idx);
+              const issueObj = typeof issue === 'string' ? { message: issue, location: 'Unknown' } : issue;
               return (
-                <button 
-                  key={idx} 
-                  onClick={() => toggleQuestion(idx)}
+                <div 
+                  key={idx}
                   className={cn(
-                    "w-full text-left p-4 bg-zinc-900/50 border border-white/5 rounded-sm flex gap-4 group transition-all",
-                    isDone ? "opacity-40" : "hover:bg-zinc-900 shadow-xl shadow-black/20"
+                    "text-left p-4 bg-[#141414] border rounded-sm flex items-start gap-3 transition-all group",
+                    isDone ? "opacity-30 border-white/5" : "border-white/10 hover:border-orange-500/30 hover:bg-orange-500/5"
                   )}
                 >
-                  <div className={cn(
-                    "flex-shrink-0 w-4 h-4 rounded-full border flex items-center justify-center transition-all mt-0.5",
-                    isDone ? "bg-emerald-500 border-emerald-500" : "border-zinc-700 group-hover:border-blue-400"
-                  )}>
+                  <button 
+                    onClick={() => toggleSpelling(idx)}
+                    className={cn(
+                      "flex-shrink-0 w-4 h-4 rounded-sm border flex items-center justify-center mt-0.5 transition-all",
+                      isDone ? "bg-emerald-500 border-emerald-500" : "border-zinc-800 bg-black group-hover:border-orange-500"
+                    )}
+                  >
                     {isDone && <CheckCircle2 className="w-3 h-3 text-white" />}
-                    {!isDone && <HelpCircle className="w-3 h-3 text-zinc-600 group-hover:text-blue-400" />}
+                  </button>
+                  <div className="flex-grow">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">{issueObj.location}</span>
+                      {issueObj.location !== 'Unknown' && (
+                        <button 
+                          onClick={() => navigateToCell(issueObj.location)}
+                          className="invisible group-hover:visible"
+                        >
+                          <Target className="w-2.5 h-2.5 text-zinc-600 hover:text-blue-400" />
+                        </button>
+                      )}
+                    </div>
+                    <p className={cn(
+                      "text-xs leading-relaxed transition-all",
+                      isDone ? "text-zinc-600 line-through" : "text-zinc-300 font-medium"
+                    )}>
+                      {issueObj.message}
+                    </p>
                   </div>
-                  <p className={cn(
-                    "text-xs leading-relaxed transition-all",
-                    isDone ? "text-zinc-500 line-through" : "text-zinc-300 italic"
-                  )}>
-                    "{question}"
-                  </p>
-                </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Actionable Finding Feed */}
+      <div className="space-y-6">
+         <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 flex items-center gap-2">
+          <CheckCircle2 className="w-3 h-3" />
+          Technical Deficiencies (Audit Log)
+        </h3>
+        <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+            {audit.findings.map((finding, idx) => {
+              const isDone = completedFindings.includes(idx);
+              return (
+                <div 
+                  key={idx}
+                  className={cn(
+                    "w-full p-3 rounded-sm border-l-2 flex gap-3 transition-all group",
+                    isDone ? "opacity-40 border-zinc-800" : "hover:bg-zinc-800",
+                    !isDone && finding.severity === 'Critical' ? "bg-red-500/5 border-red-500/40" :
+                    !isDone && finding.severity === 'High' ? "bg-orange-500/10 border-orange-500/40" :
+                    "bg-zinc-900/50 border-zinc-700"
+                  )}
+                >
+                  <button 
+                    onClick={() => toggleFinding(idx)}
+                    className={cn(
+                      "flex-shrink-0 w-4 h-4 rounded-sm border flex items-center justify-center mt-0.5 transition-all cursor-pointer",
+                      isDone ? "bg-emerald-500 border-emerald-500" : "border-zinc-700 bg-black hover:border-zinc-500"
+                    )}
+                  >
+                    {isDone && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  </button>
+                  <div 
+                    className="flex-grow cursor-pointer"
+                    onClick={() => navigateToCell(finding.location)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                          {finding.location}
+                        </span>
+                        <Target className="w-2 h-2 text-zinc-700 group-hover:text-blue-400 transition-colors" />
+                      </div>
+                      <span className={cn(
+                        "text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest",
+                        finding.severity === 'Critical' ? "bg-red-500 text-white" :
+                        finding.severity === 'High' ? "bg-orange-500 text-white" :
+                        "bg-zinc-800 text-zinc-400"
+                      )}>
+                        {finding.severity}
+                      </span>
+                    </div>
+                    <p className={cn(
+                      "text-xs font-medium transition-all",
+                      isDone ? "text-zinc-500 line-through" : "text-zinc-300"
+                    )}>
+                      {finding.message}
+                    </p>
+                    <span className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">{finding.type}</span>
+                  </div>
+                </div>
               );
             })}
           </div>
         </div>
 
-        {/* 4. Actionable Finding Feed */}
-        <div className="space-y-6">
-           <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 flex items-center gap-2">
-            <CheckCircle2 className="w-3 h-3" />
-            Technical Deficiencies (Audit Log)
-          </h3>
-          <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-            {audit.findings.map((finding, idx) => (
-              <button 
-                key={idx}
-                onClick={() => navigateToCell(finding.location)}
-                className={cn(
-                  "w-full text-left p-3 rounded-sm border-l-2 flex flex-col gap-1 transition-all group hover:bg-zinc-800",
-                  finding.severity === 'Critical' ? "bg-red-500/5 border-red-500/40" :
-                  finding.severity === 'High' ? "bg-orange-500/5 border-orange-500/40" :
-                  "bg-zinc-900/50 border-zinc-700"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                      {finding.location}
-                    </span>
-                    <Target className="w-2 h-2 text-zinc-700 group-hover:text-blue-400 transition-colors" />
-                  </div>
-                  <span className={cn(
-                    "text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest",
-                    finding.severity === 'Critical' ? "bg-red-500 text-white" :
-                    finding.severity === 'High' ? "bg-orange-500 text-white" :
-                    "bg-zinc-800 text-zinc-400"
-                  )}>
-                    {finding.severity}
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-300 font-medium">{finding.message}</p>
-                <span className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">{finding.type}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -298,7 +356,7 @@ function SummaryCard({ icon, label, value, subValue }: { icon: React.ReactNode, 
     <div className="p-6 bg-zinc-900/50 border border-white/5 rounded-sm group hover:border-white/10 transition-all">
       <div className="flex items-center gap-2 mb-3">
         {icon}
-        <span className="text-[9px] uppercase font-bold tracking-widestAlpha text-zinc-500 group-hover:text-zinc-400">{label}</span>
+        <span className="text-[9px] uppercase font-bold tracking-widest text-zinc-500 group-hover:text-zinc-400">{label}</span>
       </div>
       <div className="space-y-1">
         <p className="text-2xl font-light text-[#F5F5F4] font-mono">{value}</p>
