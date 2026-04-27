@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from "motion/react";
-import { CheckCircle2, ChevronRight, DraftingCompass, MapPin, Ruler, Wind, FileText, Download, AlertCircle, Wrench, Zap, Clock } from "lucide-react";
+import { CheckCircle2, ChevronRight, DraftingCompass, MapPin, Ruler, Wind, FileText, Download, AlertCircle, Wrench, Zap, Clock, ScanText, Search } from "lucide-react";
 import { AirBalanceData } from "../types";
 import { generateAirBalanceReport } from "../lib/pdfReport";
 
@@ -228,6 +228,38 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
               <DataField label="Certifications" value={data.tabSpecs.certifications} />
               <DataField label="Doc Ref" value={data.tabSpecs.sectionRef} />
             </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4">
+              <div className={cn(
+                "p-4 border rounded-sm flex items-center justify-between",
+                data.tabSpecs.fireDamperDropTesting ? "bg-amber-500/10 border-amber-500/30" : "bg-white/5 border-white/5 opacity-50"
+              )}>
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-2 h-2 rounded-full", data.tabSpecs.fireDamperDropTesting ? "bg-amber-500 animate-pulse" : "bg-zinc-600")} />
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-[#F5F5F4]">Fire Damper Drop Testing</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-500">{data.tabSpecs.fireDamperDropTesting ? "REQUIRED" : "NOT SPECIFIED"}</span>
+              </div>
+              
+              <div className={cn(
+                "p-4 border rounded-sm flex items-center justify-between",
+                data.tabSpecs.soundReadingsRequired ? "bg-blue-500/10 border-blue-500/30" : "bg-white/5 border-white/5 opacity-50"
+              )}>
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-2 h-2 rounded-full", data.tabSpecs.soundReadingsRequired ? "bg-blue-500 animate-pulse" : "bg-zinc-600")} />
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-[#F5F5F4]">Sound Level NC Readings</span>
+                </div>
+                <span className="text-[9px] font-mono text-zinc-500">{data.tabSpecs.soundReadingsRequired ? "REQUIRED" : "NOT SPECIFIED"}</span>
+              </div>
+            </div>
+
+            {data.tabSpecs.auditNotes && (
+              <div className="p-4 bg-zinc-900 border border-white/5 rounded-sm">
+                <p className="text-[9px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-2">Audit Special Notes</p>
+                <p className="text-xs text-zinc-400 leading-relaxed italic">"{data.tabSpecs.auditNotes}"</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-12 pt-8 border-t border-white/5">
               <div className="space-y-4">
                 <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">Standard Instrumentation</p>
@@ -720,6 +752,39 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount }: Das
               );
             })}
           </div>
+        </div>
+      </div>
+      
+      {/* 10. Technical OCR Discovery Feed */}
+      <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-t border-white/5 bg-zinc-900/10 -mx-6 px-6">
+        <div className="col-span-1">
+          <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0 flex items-center gap-2">
+            <ScanText className="w-3 h-3" />
+            10. OCR Technical Feed
+          </h3>
+        </div>
+        <div className="col-span-3 space-y-8">
+           <div className="p-6 bg-emerald-500/5 border border-emerald-500/10 rounded-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <Search className="w-4 h-4 text-emerald-400" />
+                <p className="text-[9px] uppercase font-bold text-emerald-400 tracking-widestAlpha">Document DNA Discovery</p>
+              </div>
+              <p className="text-sm italic leading-relaxed text-zinc-300">
+                {data.ocrInsight || "Analysis of document structure identifies high-confidence schedule blocks and technical note clusters."}
+              </p>
+           </div>
+           
+           <div className="space-y-4">
+              <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">Extracted Data Transcript (OCR Feed)</p>
+              <div className="bg-[#0A0A0A] border border-white/5 p-6 rounded-sm max-h-[400px] overflow-y-auto custom-scrollbar">
+                <pre className="text-[11px] font-mono leading-relaxed text-zinc-500 whitespace-pre-wrap break-words">
+                  {data.rawTextFeed || "The OCR engine is processing the vision-based transcript. Significant technical data points have been mapped to the audit sections above."}
+                </pre>
+              </div>
+              <p className="text-[9px] text-zinc-600 italic">
+                Note: This transcript is an extraction of technical schedules, legend blocks, and specification snippets used for cross-reference.
+              </p>
+           </div>
         </div>
       </div>
     </div>

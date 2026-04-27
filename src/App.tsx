@@ -5,64 +5,150 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Upload, FileUp, Loader2, AlertCircle, RefreshCw, DraftingCompass, Wind, Ruler } from 'lucide-react';
-import { analyzeAirBalancePDF } from './lib/gemini';
-import { fileToBase64 } from './lib/utils';
-import { AirBalanceData, ExtractionStatus } from './types';
+import { Upload, FileUp, Loader2, AlertCircle, RefreshCw, DraftingCompass, Wind, Ruler, Search, PenTool } from 'lucide-react';
+import * as pdfjs from 'pdfjs-dist';
+// Import the worker using Vite's ?url suffix to get a bundled path
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+import { analyzeAirBalancePDF, auditExcelReport } from './lib/gemini';
+import { fileToBase64, parseExcelFile, cn } from './lib/utils';
+import { AirBalanceData, ExtractionStatus, ExcelAuditReport } from './types';
 import { Dashboard } from './components/Dashboard';
+import { ExcelAuditView } from './components/ExcelAuditView';
+
+// Set up pdf.js worker using the bundled local path
+pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 export default function App() {
   const [status, setStatus] = useState<ExtractionStatus>('idle');
+  const [mode, setMode] = useState<'pdf' | 'excel'>('pdf');
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AirBalanceData | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [excelRawData, setExcelRawData] = useState<any[] | null>(null);
 
   const [progress, setProgress] = useState(0);
   const [progressStage, setProgressStage] = useState("");
 
   const stages = [
-    { threshold: 20, text: "Indexing technical metadata..." },
-    { threshold: 40, text: "Extracting Section 23 05 93 specs..." },
+    { threshold: 20, text: "OCR Discovery & Technical Indexing..." },
+    { threshold: 40, text: "Scanning Spec Section 23 05 93..." },
     { threshold: 60, text: "Reconciling terminal unit math..." },
     { threshold: 80, text: "Compiling field strategy tactics..." },
     { threshold: 100, text: "Finalizing audit report..." },
   ];
 
+  const excelStages = [
+    { threshold: 30, text: "Parsing Worksheets & Cell Mapping..." },
+    { threshold: 60, text: "Applying Tolerance Math (0.90 - 1.10)..." },
+    { threshold: 90, text: "Engineering Logic & Grammar Audit..." },
+    { threshold: 100, text: "Generating Markup Render..." },
+  ];
+
+  const extractRawText = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    let fullText = "";
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(" ");
+      fullText += `[Page ${i}]\n${pageText}\n\n`;
+    }
+    
+    return fullText;
+  };
+
   const processFiles = async (filesToProcess: File[]) => {
     if (filesToProcess.length === 0) return;
     
     const pdfs = filesToProcess.filter(f => f.type === 'application/pdf');
-    if (pdfs.length === 0) {
-      setError('No valid PDF files found.');
+    const excels = filesToProcess.filter(f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
+    
+    if (pdfs.length === 0 && excels.length === 0) {
+      setError('No valid PDF or Excel files found.');
       return;
     }
 
     try {
       setStatus('loading');
       setError(null);
-      setFiles(pdfs);
+      setFiles(filesToProcess);
       setProgress(0);
       
       let mergedData: AirBalanceData | null = null;
 
-      for (let i = 0; i < pdfs.length; i++) {
-        const file = pdfs[i];
-        const baseProgress = (i / pdfs.length) * 100;
-        const nextBaseProgress = ((i + 1) / pdfs.length) * 100;
+      // Handle PDF Audit
+      if (pdfs.length > 0) {
+        for (let i = 0; i < pdfs.length; i++) {
+          const file = pdfs[i];
+          const baseProgress = (i / pdfs.length) * 100;
+          const nextBaseProgress = ((i + 1) / pdfs.length) * 100;
+          
+          setProgressStage(`Performing OCR on ${file.name} (${i + 1}/${pdfs.length})`);
+          
+          const base64 = await fileToBase64(file);
+          
+          // Extract raw text for grounding (OCR booster)
+          let technicalTranscript = "";
+          try {
+            technicalTranscript = await extractRawText(file);
+          } catch (ocrErr) {
+            console.warn("Soft OCR extraction failed, relying on Gemini Vision:", ocrErr);
+          }
+
+          const result = await analyzeAirBalancePDF(base64);
+          
+          // Inject transcripts into result if missing but found by client OCR
+          if (result && technicalTranscript) {
+            result.rawTextFeed = result.rawTextFeed || technicalTranscript.substring(0, 5000);
+          }
+
+          if (!mergedData) {
+            mergedData = result;
+          } else {
+            // Merge logic
+            mergedData = mergeAirBalanceData(mergedData, result);
+          }
+          
+          setProgress(nextBaseProgress);
+        }
+      }
+
+      // Handle Excel Audit
+      if (excels.length > 0) {
+        // We only audit the first excel file for now or sequential
+        const file = excels[0];
+        setProgressStage("Parsing Excel Worksheets...");
+        setProgress(20);
         
-        setProgressStage(`Analyzing ${file.name} (${i + 1}/${pdfs.length})`);
+        const sheetData = await parseExcelFile(file);
+        setExcelRawData(sheetData);
         
-        const base64 = await fileToBase64(file);
-        const result = await analyzeAirBalancePDF(base64);
+        setProgressStage("Engineering Audit in Progress...");
+        setProgress(50);
+        
+        const auditResult = await auditExcelReport(sheetData);
         
         if (!mergedData) {
-          mergedData = result;
+          // Initialize empty air balance data shell
+          mergedData = {
+            projectIdentity: { measurementUnits: 'Imperial (cfm)', classification: 'Excel Audit' },
+            globalAirBalance: { systems: [] },
+            tabSpecs: {},
+            equipmentSchedules: { units: [], vavSummation: { mainUnitCfm: 0, totalVavCfm: 0, discrepancy: 0, mathString: "" } },
+            shopDrawings: { confirmsDesign: true },
+            fieldStrategy: { plenumReturnIdentified: false, checklists: [] },
+            logistics: { toolsRequired: [], criticalPaths: [] },
+            preBalanceReadiness: { checklist: [], systemOverview: "", criticalDeficiencies: [] },
+            excelAudit: auditResult
+          };
         } else {
-          // Merge logic
-          mergedData = mergeAirBalanceData(mergedData, result);
+          mergedData.excelAudit = auditResult;
         }
         
-        setProgress(nextBaseProgress);
+        setProgress(100);
       }
       
       setProgressStage("Audit Complete");
@@ -101,7 +187,10 @@ export default function App() {
     const traverseEntry = async (entry: any) => {
       if (entry.isFile) {
         const file = await new Promise<File>((resolve) => entry.file(resolve));
-        if (file.type === 'application/pdf') gatheredFiles.push(file);
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (file.type === 'application/pdf' || ext === 'xlsx' || ext === 'xls') {
+          gatheredFiles.push(file);
+        }
       } else if (entry.isDirectory) {
         const reader = entry.createReader();
         const entries = await new Promise<any[]>((resolve) => reader.readEntries(resolve));
@@ -196,14 +285,37 @@ export default function App() {
             </div>
           </div>
           
-          {status !== 'idle' && (
-            <button 
-              onClick={reset}
-              className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-white transition-colors"
-            >
-              New Audit
-            </button>
-          )}
+          <div className="flex items-center gap-8">
+            <div className="flex bg-zinc-900 border border-white/5 rounded-sm p-1">
+              <button
+                onClick={() => setMode('pdf')}
+                className={cn(
+                  "px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm",
+                  mode === 'pdf' ? "bg-zinc-100 text-black shadow-lg" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                PDF Job Audit
+              </button>
+              <button
+                onClick={() => setMode('excel')}
+                className={cn(
+                  "px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm",
+                  mode === 'excel' ? "bg-zinc-100 text-black shadow-lg" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                Excel Report Audit
+              </button>
+            </div>
+            
+            {status !== 'idle' && (
+              <button 
+                onClick={reset}
+                className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-white transition-colors"
+              >
+                New Audit
+              </button>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -221,28 +333,50 @@ export default function App() {
                 <div className="space-y-12">
                   <div className="space-y-6">
                     <div className="inline-flex px-2 py-1 rounded bg-zinc-800 text-zinc-100 text-[9px] font-bold uppercase tracking-[0.2em]">
-                      Expert Technical Assistant
+                      {mode === 'pdf' ? 'Expert Technical Assistant' : 'Quality Control Specialist'}
                     </div>
                     <h2 className="text-6xl font-light text-[#F5F5F4] leading-[0.95] tracking-tight">
-                      Surgical Accuracy <br />
-                      for HVAC TAB.
+                      {mode === 'pdf' 
+                        ? <>Surgical Accuracy <br /> for HVAC TAB.</>
+                        : <>Rigorous QA <br /> for Report Sets.</>
+                      }
                     </h2>
                     <p className="text-zinc-500 text-lg max-w-md leading-relaxed">
-                      Upload project drawings or submittals. TAB Assist performs an 8-point technical audit including diversity math and pressure pathology.
+                      {mode === 'pdf' 
+                        ? 'Upload project drawings or submittals. TAB Assist performs an 8-point technical audit including diversity math and pressure pathology.'
+                        : 'Upload completed Excel air balance reports. Audit spelling, engineering logic, math tolerances, and technical clarity with automated markup.'
+                      }
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-8 border-t border-white/5">
-                    <FeatureItem 
-                      icon={<Ruler className="w-4 h-4" />} 
-                      title="Spec Audit" 
-                      desc="Section 23 05 93 verification for tolerances and certs."
-                    />
-                    <FeatureItem 
-                      icon={<Wind className="w-4 h-4" />} 
-                      title="Math Review" 
-                      desc="Automated VAV-to-Main summation check."
-                    />
+                    {mode === 'pdf' ? (
+                      <>
+                        <FeatureItem 
+                          icon={<Ruler className="w-4 h-4" />} 
+                          title="Spec Audit" 
+                          desc="Section 23 05 93 verification for tolerances and certs."
+                        />
+                        <FeatureItem 
+                          icon={<Wind className="w-4 h-4" />} 
+                          title="Math Review" 
+                          desc="Automated VAV-to-Main summation check."
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <FeatureItem 
+                          icon={<Search className="w-4 h-4" />} 
+                          title="Cell Audit" 
+                          desc="Check Design vs Actual within 10% tolerance bounds."
+                        />
+                        <FeatureItem 
+                          icon={<PenTool className="w-4 h-4" />} 
+                          title="QC Markup" 
+                          desc="Automated grammar and engineering logic validation."
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -256,7 +390,7 @@ export default function App() {
                     <div className="relative h-full flex flex-col items-center justify-center border border-white/10 bg-[#141414] hover:border-white/30 transition-all rounded-xl p-12 text-center cursor-pointer min-h-[400px]">
                       <input
                         type="file"
-                        accept=".pdf"
+                        accept={mode === 'pdf' ? ".pdf" : ".xlsx,.xls"}
                         multiple
                         onChange={handleFileChange}
                         className="absolute inset-0 opacity-0 cursor-pointer"
@@ -266,8 +400,12 @@ export default function App() {
                            <FileUp className="w-8 h-8 text-zinc-600 group-hover:text-[#141414] transition-colors" />
                         </div>
                         <div className="space-y-2">
-                           <p className="text-[#F5F5F4] font-medium text-lg">Drop PDF Drawing Set or Folder</p>
-                           <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono text-center">Batch Processing Enabled (Max 20MB / file)</p>
+                           <p className="text-[#F5F5F4] font-medium text-lg">
+                             {mode === 'pdf' ? 'Drop PDF Drawing Set' : 'Drop Excel Balance Report'}
+                           </p>
+                           <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono text-center">
+                             {mode === 'pdf' ? 'Surgical Drawing Audit' : 'Rigorous Quality Control'}
+                           </p>
                         </div>
                       </div>
                     </div>
@@ -371,12 +509,28 @@ export default function App() {
                   {files.length > 1 && ` (+${files.length - 1} more)`}
                 </p>
               </div>
-              <Dashboard 
-                data={data} 
-                sourceFileName={files.length > 0 ? files[0].name : 'Unknown_File'} 
-                onUpdateData={(updated) => setData({ ...updated })}
-                fileCount={files.length}
-              />
+              
+              {data.excelAudit && excelRawData ? (
+                <div className="space-y-12">
+                   <ExcelAuditView data={data} excelData={excelRawData} />
+                   <div className="border-t border-white/5 pt-12">
+                      <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-600 mb-8">Technical Reference (PDF Context if available)</h3>
+                      <Dashboard 
+                        data={data} 
+                        sourceFileName={files.length > 0 ? files[0].name : 'Unknown_File'} 
+                        onUpdateData={(updated) => setData({ ...updated })}
+                        fileCount={files.length}
+                      />
+                   </div>
+                </div>
+              ) : (
+                <Dashboard 
+                  data={data} 
+                  sourceFileName={files.length > 0 ? files[0].name : 'Unknown_File'} 
+                  onUpdateData={(updated) => setData({ ...updated })}
+                  fileCount={files.length}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>

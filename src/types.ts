@@ -4,6 +4,7 @@
  */
 
 export interface AirBalanceData {
+  // Existing fields...
   projectIdentity: {
     projectName?: string;
     siteAddress?: string;
@@ -27,6 +28,9 @@ export interface AirBalanceData {
     instrumentation?: string[];
     certifications?: string; // e.g. AABC, NEBB
     sectionRef?: string; // usually 23 05 93
+    fireDamperDropTesting?: boolean;
+    soundReadingsRequired?: boolean;
+    auditNotes?: string;
   };
   equipmentSchedules: {
     units: TABEquipment[];
@@ -81,6 +85,35 @@ export interface AirBalanceData {
     traversePoints: string[];
     hardwareNotes?: string;
   };
+  ocrInsight?: string; // High-level technical discovery of the document
+  rawTextFeed?: string; // Raw text transcript extracted from the PDF
+  
+  // Excel Audit specific field
+  excelAudit?: ExcelAuditReport;
+}
+
+export interface ExcelAuditReport {
+  summary: {
+    overallStatus: 'Pass' | 'Fail' | 'Partial';
+    totalCheckedCells: number;
+    issuesFound: number;
+    engineeringScore: number; // 1-100
+  };
+  findings: ExcelFinding[];
+  questionsForEngineer: string[];
+  suggestedChanges: {
+    originalValue: string;
+    proposedValue: string;
+    location: string; // e.g. "Sheet1!B5"
+    reason: string;
+  }[];
+}
+
+export interface ExcelFinding {
+  type: 'Grammar' | 'Calculation' | 'Engineering Logic' | 'Tolerance';
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  location: string; // e.g. "Unit AHU-1 Row"
+  message: string;
 }
 
 export interface TABEquipment {
