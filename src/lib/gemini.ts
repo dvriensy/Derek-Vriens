@@ -83,7 +83,9 @@ export const AIR_BALANCE_SCHEMA = {
                   type: Type.OBJECT,
                   properties: {
                     outletNumber: { type: Type.STRING },
+                    quantity: { type: Type.NUMBER, description: "Quantity prefix if found, e.g., 2 for '2 @ 500 CFM'. Default to 1." },
                     registerType: { type: Type.STRING },
+                    manufacturer: { type: Type.STRING, description: "e.g., Titus, Price, Carnes, Krueger" },
                     ductSize: { type: Type.STRING },
                     designVolume: { type: Type.NUMBER },
                     visualJustification: { type: Type.STRING },
@@ -199,6 +201,7 @@ export const AIR_BALANCE_SCHEMA = {
       properties: {
         mvdStatus: { type: Type.STRING, enum: ["Present", "Missing", "Partial"] },
         traversePoints: { type: Type.ARRAY, items: { type: Type.STRING } },
+        manufacturers: { type: Type.ARRAY, items: { type: Type.STRING } },
         hardwareNotes: { type: Type.STRING },
       },
     },
@@ -392,23 +395,31 @@ export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): 
 
     Perform a 10-point Precision Audit on the provided PDF drawing or specification:
     
-    1. PROJECT IDENTITY & DNA: Extract site address, project name, engineering firm, and specifically classify the HVAC architecture (e.g., VAV with Reheat, RTU with CAV, HRV).
+    1. PROJECT IDENTITY & DNA: 
+       - SITE ADDRESS EXTRACTION: Target title blocks specifically. Scan the bottom-right and far-right margins of every sheet for labels like "Project Address," "Site Location," "Job Address," or "Project Site."
+       - SUBMITTAL CROSS-REFERENCE: If found in a submittal package (Lennox, Titus, etc.), check "Project Information" or "Cover Page" blocks for the location.
+       - PRIORITIZATION: If multiple addresses appear (e.g., Engineer vs Site), ALWAYS prioritize the one labeled "Site" or "Job Site." If no explicit "Site" label is found, use the most plausible physical construction address.
+       - Complete other fields: projectName, engineering firm, and HVAC architecture classification (e.g., VAV with Reheat, RTU with CAV, HRV).
     2. GLOBAL AIR BALANCE RECONCILIATION: Perform a high-level "sanity check." Aggregate total volumes category (Supply, Return, Exhaust). Compare Total Design Volume of all equipment against any Diversified Totals listed. ALSO aggregate and extract TOTAL OUTDOOR AIR (OA) volumes per system type.
     3. TAB SPEC COMPLIANCE (Section 23 05 93): Scan for tolerances (e.g., +/- 5% or 10%), Certifications (AABC or NEBB), and mandated Instrumentation (e.g., Pitot tubes).
     4. FIRE DAMPER DROP TESTING: Specifically scan job notes and specifications for requirements regarding "Fire Damper Drop Testing" or "Smoke Damper Verification." 
        MANDATORY: Count the number of dampers and list their specific locations found in drawings/notes in 'fireDamperCount' and 'fireDamperLocations'.
     5. SOUND READINGS: Check if "Sound Pressure Level Readings" or "NC Level Verification" are required. List specific room names/numbers where these are mandated in 'soundReadingLocations'.
     6. EXCLUSION: Do NOT mention or extract calibration dates for any equipment. This is a specific request to keep the report concise.
-    7. MATH SUMMATION AUDIT: Provide an explicit math string for every unit's outlet summation (e.g., "75 + 50 + 50 + 50 = 225"). Compare this sum to the unit's rated capacity. Flag any variance > 5%. 
-       IMPORTANT MATH LOGIC: If the sum of individual outlets EQUALS the main unit's design CFM, you MUST NOT report a discrepancy. Re-verify your arithmetic multiple times. Hallucinating a deficit where the math is correct is a critical failure.
+    7. MATH SUMMATION AUDIT: Provide an explicit math string for every unit's outlet summation.
+       QUANTITY RECOGNITION: If an airflow value is prefixed with a quantity (e.g., '2@ 500' or '3x 200'), you MUST interpret this as multiple outlets.
+       MULTIPLICATION RULE: For totals, calculate as Quantity x Value (e.g., '2 @ 500 = 1000' or '3 x 200 = 600').
+       MATH STRING FORMAT: Your 'mathString' must show this work: "(2 @ 500) + (3 @ 200) = 1600".
+       IMPORTANT MATH LOGIC: If the sum (including quantities) EQUALS the main unit's design CFM, you MUST NOT report a discrepancy. Re-verify your arithmetic multiple times. Hallucinating a deficit where the math is correct is a critical failure.
        NOTE: For CAV (Constant Air Volume) systems where terminal boxes (VAVs) are absent, the 'totalVavCfm' (Terminal Box Sum) must NOT be 0; instead, it must be the aggregate sum of ALL individual outlets (diffusers/grilles) listed. Ensure 'mathString' reflects this addition.
-    8. SHOP DRAWING & SCHEDULE CROSS-REFERENCE: Reconcile schedules with shop drawings and plan outlets. MANDATORY STEPS: (1) Locate 'Mechanical Equipment Schedule' and identify 'Design CFM' column. (2) Find 'Diffuser Schedule' (or plan callouts) and sum all 'Airflow' values. (3) Compare these to determine the "Actual Design Total Air Volume." Populate 'designReconciliation' with status and detailed discrepancies. 
+    8. SHOP DRAWING & SCHEDULE CROSS-REFERENCE: Reconcile schedules with shop drawings and plan outlets. MANDATORY STEPS: (1) Locate 'Mechanical Equipment Schedule' and identify 'Design CFM' column. (2) Find 'Diffuser Schedule' (or plan callouts) and sum all 'Airflow' values, APPLY MULTIPLIERS where quantities are listed. (3) Extract Manufacturer names for all grilles and diffusers identified. (4) Compare these to determine the "Actual Design Total Air Volume." Populate 'designReconciliation' with status and detailed discrepancies. 
        VISUAL JUSTIFICATION: For every discrepancy, you MUST provide a "Visual Justification". Describe exactly where the conflicting info is located (e.g., 'Bottom-right legend of Sheet M-103' or 'Next to the red-lined revision cloud on Page 5'). Explain visual cues like 'tag shows 150 L/s but branch line matches 500 CFM scale'.
-       RECONCILIATION MATH: Ensure 'outletSumVolume' is the EXACT arithmetic sum of the diffusers you identified. Double-check your own calculation before determining the 'status'.
-    9. DIVERSITY AUDIT: Calculate the ratio of total peak flow of all outlets to unit capacity. If ratio is >105% and no "Diversity Note" exists, flag as Capacity Risk.
-    10. PRESSURE PATH ANALYSIS: Compare External Static Pressure (ESP) in schedules to ductwork complexity (long runs, excessive elbows) on plans. Flag Bottleneck Risks.
-    11. HARDWARE INDEX: Identify presence of Manual Volume Dampers (MVDs) for balanceability and specify Pitot Traverse locations for accurate measurements.
-    12. EXECUTIVE SUMMARY: Generate a high-level summary for leadership highlighting the critical path forward, major project risks, and overall drawing compliance.
+       RECONCILIATION MATH: Ensure 'outletSumVolume' is the EXACT arithmetic sum (including quantity multipliers) of the diffusers you identified. Double-check your own calculation before determining the 'status'.
+    9. MANUFACTURER IDENTIFICATION: Prioritize identifying the manufacturer for all air distribution devices (Diffusers, Grilles, Registers). If found in the legend or schedule, apply it to every applicable outlet.
+    10. DIVERSITY AUDIT: Calculate the ratio of total peak flow of all outlets (including multipliers) to unit capacity. If ratio is >105% and no "Diversity Note" exists, flag as Capacity Risk.
+    11. PRESSURE PATH ANALYSIS: Compare External Static Pressure (ESP) in schedules to ductwork complexity (long runs, excessive elbows) on plans. Flag Bottleneck Risks.
+    12. HARDWARE INDEX: Identify presence of Manual Volume Dampers (MVDs) for balanceability and specify Pitot Traverse locations for accurate measurements.
+    13. EXECUTIVE SUMMARY: Generate a high-level summary for leadership highlighting the critical path forward, major project risks, and overall drawing compliance.
 
     TECHNICAL OCR & DOCUMENT DISCOVERY:
     - Perform a "Digital Scan" to extract all technical text from schedules, legends, and specification blocks.
@@ -511,5 +522,60 @@ export async function queryPDFReport(base64Data: string, question: string): Prom
   } catch (error: any) {
     console.error("PDF Query failed:", error);
     throw error;
+  }
+}
+
+export async function reconcileProjectData(projectData: AirBalanceData): Promise<AirBalanceData> {
+  if (!import.meta.env.VITE_GEMINI_API_KEY) {
+    throw new Error("VITE_GEMINI_API_KEY is not configured.");
+  }
+
+  const projectContext = JSON.stringify(projectData, (key, value) => {
+    // Prune raw text and insights to save tokens
+    if (key === 'rawTextFeed' || key === 'ocrInsight') return undefined;
+    return value;
+  });
+
+  const prompt = `
+    Role: Master TAB Reconciliation Engineer.
+    Task: Perform a Global Reconciliation Pass on the multi-document air balance data extraction.
+    
+    CRITICAL OBJECTIVES:
+    1. MASTER SUMMATION: Sum ALL individual diffuser/outlet CFMs found across all documents (captured in the 'units.outlets' arrays).
+    2. CROSS-REFERENCE: Compare this Master Sum against the RTU/AHU Design Totals found in equipment schedules.
+    3. DESIGN RECONCILIATION: Update the 'designReconciliation' object with:
+       - scheduleDesignVolume: The aggregate design volume from all main units.
+       - outletSumVolume: The absolute arithmetic sum of all identified diffusers/grilles.
+       - reconciledVolume: Your final engineering determination of the actual project target.
+       - status: 'Matched', 'Discrepancy', or 'Critical Error'.
+       - discrepancies: List any specific units where the sum doesn't match the schedule.
+    4. HARDWARE CONSOLIDATION: Group and list all unique manufacturers (e.g., Titus, Price) into a unified Hardware Index.
+    5. PATH RISK: Flag any major systemic risks that only become apparent when looking at the project as a whole (e.g., "The combined ESP of AHU-1 branch 'A' exceeds its rated capacity despite individual outlets being correct").
+    6. PROJECT IDENTITY RECONCILIATION: Review all extracted project names and site addresses. Prioritize the address explicitly labeled "Site Address" or "Job Site." If multiple documents show different addresses, determine the actual physical project location.
+    7. EXECUTIVE SUMMARY: Update the summary to reflect a completed project-wide audit rather than single-file findings.
+
+    Merged Project Data (JSON):
+    ${projectContext}
+
+    Return the final PROJECT-WIDE AirBalanceData in strictly valid JSON format matching the schema. Ensure ALL original details (units, tags, locations) are preserved while consolidating the higher-level audit fields.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview", // Flash is sufficient for JSON-to-JSON reasoning
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: AIR_BALANCE_SCHEMA,
+      },
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No data returned during reconciliation");
+    
+    return JSON.parse(text) as AirBalanceData;
+  } catch (error) {
+    console.error("Project Reconciliation failed, returning original data:", error);
+    return projectData;
   }
 }

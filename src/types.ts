@@ -86,6 +86,7 @@ export interface AirBalanceData {
   hardwareIndex?: {
     mvdStatus: 'Present' | 'Missing' | 'Partial';
     traversePoints: string[];
+    manufacturers?: string[];
     hardwareNotes?: string;
   };
   ocrInsight?: string; // High-level technical discovery of the document
@@ -155,7 +156,9 @@ export interface TABEquipment {
 
 export interface TABOutlet {
   outletNumber: string; // e.g. 1.1, 1.2
+  quantity?: number;    // e.g. 2 for "2@ 500 CFM"
   registerType: string; // e.g. SD-1, Perforated
+  manufacturer?: string; // e.g. Titus, Price, Carnes
   ductSize: string;     // e.g. 8"Ø, 12x10
   designVolume: number;
   visualJustification?: string;

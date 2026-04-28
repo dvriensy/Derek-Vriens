@@ -8,7 +8,21 @@ import autoTable from "jspdf-autotable";
 import { AirBalanceData } from "../types";
 
 export function generateAirBalanceReport(data: AirBalanceData, fileName: string) {
-  const doc = new jsPDF();
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4',
+    putOnlyUsedFonts: true // Optimize for lightweight readers
+  });
+
+  doc.setProperties({
+    title: `TAB Audit - ${data.projectIdentity.projectName}`,
+    subject: 'Air Balance Audit Report',
+    author: 'Accu-Air Technical Services',
+    creator: 'Accu-Air Technical Services',
+    keywords: 'TAB, HVAC, Audit'
+  });
+
   const timestamp = new Date().toLocaleDateString();
   const isMetric = data.projectIdentity.measurementUnits === 'Metric (L/s)';
   const unitLabel = isMetric ? "L/s" : "CFM";
@@ -94,10 +108,11 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   doc.addPage();
 
   // Header for standard pages (Keeping white background for printability, but dark accents)
-  doc.setFontSize(10);
+  doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
   doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
-  doc.text(`Audit: ${data.projectIdentity.projectName || 'Project'}`, 196, 10, { align: 'right' });
+  const headerRight = `Audit: ${data.projectIdentity.projectName || 'Project'}${data.projectIdentity.siteAddress ? ` | ${data.projectIdentity.siteAddress}` : ''}`;
+  doc.text(headerRight, 196, 10, { align: 'right' });
   doc.setDrawColor(230, 230, 230);
   doc.line(14, 12, 196, 12);
 
@@ -120,8 +135,8 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       item.note
     ]),
     theme: 'grid',
-    headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255] },
-    styles: { fontSize: 8 },
+    headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255], font: 'helvetica' },
+    styles: { fontSize: 8, font: 'helvetica' },
     columnStyles: { 1: { fontStyle: 'bold' } }
   });
 
@@ -154,7 +169,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       ["Measurement Units", data.projectIdentity.measurementUnits || "Imperial (cfm)"],
     ],
     theme: 'plain',
-    styles: { fontSize: 10, cellPadding: 2 },
+    styles: { fontSize: 10, cellPadding: 2, font: 'helvetica' },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }
   });
 
@@ -190,8 +205,8 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       return baseRow;
     }),
     theme: 'grid',
-    headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255] },
-    styles: { fontSize: 8 }
+    headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255], font: 'helvetica' },
+    styles: { fontSize: 8, font: 'helvetica' }
   });
 
   // 3. TAB Specs & Logistics
@@ -211,7 +226,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       ["Critical Paths (SP > 0.5\")", data.logistics?.criticalPaths?.join(", ") || "None"],
     ],
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 2 },
+    styles: { fontSize: 9, cellPadding: 2, font: 'helvetica' },
     columnStyles: { 0: { fontStyle: 'bold', fillColor: [250, 250, 250], textColor: [80, 80, 80], cellWidth: 40 } }
   });
 
@@ -234,11 +249,14 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         row.push(Math.round(convertToCfm(u.designCfm || 0)).toLocaleString());
       }
       row.push(u.staticPressure || "-");
+      if (u.visualJustification) {
+        row[0] = `${u.tag}\n(REF: ${u.visualJustification})`;
+      }
       return row;
     }) || [],
     theme: 'striped',
-    headStyles: { fillColor: [20, 20, 20] },
-    styles: { fontSize: 8 }
+    headStyles: { fillColor: [20, 20, 20], font: 'helvetica' },
+    styles: { fontSize: 8, font: 'helvetica' }
   });
 
   doc.setFont("helvetica", "bold");
@@ -253,7 +271,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       ["Audit Logic Note", data.equipmentSchedules?.vavSummation?.mathNote || "No anomalies detected in branch summation."],
     ],
     theme: 'grid',
-    styles: { fontSize: 9 },
+    styles: { fontSize: 9, font: 'helvetica' },
     columnStyles: { 0: { fontStyle: 'bold', fillColor: [250, 250, 250], textColor: [80, 80, 80], cellWidth: 50 } }
   });
 
@@ -268,8 +286,8 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       ["Constraints", data.shopDrawings?.physicalConstraints?.join("; ") || "-"],
     ],
     theme: 'grid',
-    headStyles: { fillColor: [20, 20, 20] },
-    styles: { fontSize: 9 },
+    headStyles: { fillColor: [20, 20, 20], font: 'helvetica' },
+    styles: { fontSize: 9, font: 'helvetica' },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [80, 80, 80] } }
   });
 
@@ -286,7 +304,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         ["Diversity Notes", data.diversityAudit.diversityNote || "Standard diversity applied."],
       ],
       theme: 'grid',
-      styles: { fontSize: 9 },
+      styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [80, 80, 80] } }
     });
   }
@@ -302,7 +320,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         ["Complexity Notes", data.pressurePath.complexityNotes?.join("; ") || "Standard duct routing."],
       ],
       theme: 'grid',
-      styles: { fontSize: 9 },
+      styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [80, 80, 80] } }
     });
   }
@@ -318,7 +336,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         ["Hardware Notes", data.hardwareIndex.hardwareNotes || "-"],
       ],
       theme: 'grid',
-      styles: { fontSize: 9 },
+      styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [80, 80, 80] } }
     });
   }
@@ -335,7 +353,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       ["Strategy Notes", data.fieldStrategy?.strategyNotes || "-"],
     ],
     theme: 'plain',
-    styles: { fontSize: 9, cellPadding: 2 },
+    styles: { fontSize: 9, cellPadding: 2, font: 'helvetica' },
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }
   });
 
@@ -346,8 +364,8 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         head: [[list.title, 'Status']],
         body: list.tasks.map(t => [t.description, t.isCompleted ? "[X] DONE" : "[ ] PENDING"]),
         theme: 'striped',
-        headStyles: { fillColor: [35, 135, 166], textColor: [255, 255, 255] },
-        styles: { fontSize: 8 },
+        headStyles: { fillColor: [35, 135, 166], textColor: [255, 255, 255], font: 'helvetica' },
+        styles: { fontSize: 8, font: 'helvetica' },
         columnStyles: { 1: { cellWidth: 30, fontStyle: 'bold' } }
       });
     });
@@ -368,24 +386,25 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       doc.text(`Unit Discharge Total: ${unit.designCfm.toLocaleString()} ${unitLabel}`, 14, 28);
       
       const outletRows = (unit.outlets || []).map(o => [
-        o.outletNumber,
+        o.visualJustification ? `${o.outletNumber}${o.quantity && o.quantity > 1 ? ` (${o.quantity}x)` : ''}\n(REF: ${o.visualJustification})` : `${o.outletNumber}${o.quantity && o.quantity > 1 ? ` (${o.quantity}x)` : ''}`,
         o.registerType || "-",
+        o.manufacturer || "-",
         o.ductSize || "-",
-        o.designVolume.toLocaleString(),
+        (o.designVolume * (o.quantity || 1)).toLocaleString(),
         "                " // Space for manual entry
       ]);
 
       autoTable(doc, {
         startY: 35,
-        head: [['Outlet #', 'Type', 'Duct Size', `Design (${unitLabel})`, 'Field Reading']],
+        head: [['Outlet #', 'Type', 'Manufacturer', 'Duct Size', `Design (${unitLabel})`, 'Field Reading']],
         body: outletRows,
         theme: 'grid',
-        headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255] },
-        styles: { fontSize: 9 },
-        columnStyles: { 4: { cellWidth: 40, fillColor: [250, 250, 250] } }
+        headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255], font: 'helvetica' },
+        styles: { fontSize: 9, font: 'helvetica' },
+        columnStyles: { 5: { cellWidth: 40, fillColor: [250, 250, 250] } }
       });
 
-      const totalOutlets = unit.outlets?.reduce((acc, o) => acc + o.designVolume, 0) || 0;
+      const totalOutlets = unit.outlets?.reduce((acc, o) => acc + (o.designVolume * (o.quantity || 1)), 0) || 0;
       const variance = unit.designCfm > 0 ? Math.abs(((totalOutlets - unit.designCfm) / unit.designCfm) * 100) : 0;
 
       doc.setFontSize(10);
@@ -403,6 +422,29 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         doc.text("FLAGGED: Design Discrepancy > 5%", 14, (doc as any).lastAutoTable.finalY + 25);
         doc.setTextColor(0, 0, 0);
       }
+    });
+  }
+
+  // 11. Design Reconciliation & Audit Evidence
+  if (data.designReconciliation) {
+    doc.addPage();
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("11. Design Reconciliation & Audit Evidence", 14, 20);
+
+    autoTable(doc, {
+      startY: 25,
+      body: [
+        ["Schedule Design Total", `${data.designReconciliation.scheduleDesignVolume.toLocaleString()} ${unitLabel}`],
+        ["Outlet Summation Total", `${data.designReconciliation.outletSumVolume.toLocaleString()} ${unitLabel}`],
+        ["Reconciled Volume", `${data.designReconciliation.reconciledVolume.toLocaleString()} ${unitLabel}`],
+        ["Audit Status", data.designReconciliation.status],
+        ["Discrepancies", data.designReconciliation.discrepancies.join("; ") || "None"],
+        ["Visual Justification (REF)", data.designReconciliation.visualJustification || "No landmark cited"]
+      ],
+      theme: 'grid',
+      styles: { fontSize: 9, font: 'helvetica' },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [80, 80, 80] } }
     });
   }
 

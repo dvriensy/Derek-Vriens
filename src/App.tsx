@@ -9,7 +9,7 @@ import { Upload, FileUp, Loader2, AlertCircle, RefreshCw, DraftingCompass, Wind,
 import * as pdfjs from 'pdfjs-dist';
 // Import the worker using Vite's ?url suffix to get a bundled path
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-import { analyzeAirBalancePDF, auditExcelReport, queryPDFReport } from './lib/gemini';
+import { analyzeAirBalancePDF, auditExcelReport, queryPDFReport, reconcileProjectData } from './lib/gemini';
 import { fileToBase64, parseExcelFile, cn } from './lib/utils';
 import { AirBalanceData, ExtractionStatus, ExcelAuditReport } from './types';
 import { Dashboard } from './components/Dashboard';
@@ -149,10 +149,16 @@ export default function App() {
         } else {
           mergedData.excelAudit = auditResult;
         }
-        
-        setProgress(100);
+      }
+
+      // Final Global Reconciliation Pass if multiple files were processed or it's a PDF audit
+      if (mergedData && pdfs.length > 0) {
+        setProgressStage("Performing Global Reconciliation...");
+        setProgress(95);
+        mergedData = await reconcileProjectData(mergedData);
       }
       
+      setProgress(100);
       setProgressStage("Audit Complete");
       setTimeout(() => {
         setData(mergedData);
@@ -221,12 +227,28 @@ export default function App() {
       },
       // Merge equipment
       equipmentSchedules: {
-        units: [
-          ...(existing.equipmentSchedules?.units || []),
-          ...(newData.equipmentSchedules?.units || []).filter(u => 
-            !(existing.equipmentSchedules?.units || []).some(eu => eu.tag === u.tag)
-          )
-        ],
+        units: (() => {
+          const mergedUnits = [...(existing.equipmentSchedules?.units || [])];
+          for (const newUnit of (newData.equipmentSchedules?.units || [])) {
+            const existingIdx = mergedUnits.findIndex(u => u.tag === newUnit.tag);
+            if (existingIdx !== -1) {
+              // Deep merge unit data
+              mergedUnits[existingIdx] = {
+                ...mergedUnits[existingIdx],
+                ...newUnit,
+                outlets: [
+                  ...(mergedUnits[existingIdx].outlets || []),
+                  ...(newUnit.outlets || []).filter(no => 
+                    !(mergedUnits[existingIdx].outlets || []).some(eo => eo.outletNumber === no.outletNumber)
+                  )
+                ]
+              };
+            } else {
+              mergedUnits.push(newUnit);
+            }
+          }
+          return mergedUnits;
+        })(),
         vavSummation: (newData.equipmentSchedules?.vavSummation?.totalVavCfm || 0) > (existing.equipmentSchedules?.vavSummation?.totalVavCfm || 0) 
           ? newData.equipmentSchedules?.vavSummation || existing.equipmentSchedules?.vavSummation || { totalVavCfm: 0, mainUnitCfm: 0, discrepancy: 0 }
           : existing.equipmentSchedules?.vavSummation || newData.equipmentSchedules?.vavSummation || { totalVavCfm: 0, mainUnitCfm: 0, discrepancy: 0 }
@@ -247,6 +269,19 @@ export default function App() {
           ...(existing.tabSpecs?.soundReadingLocations || []),
           ...(newData.tabSpecs?.soundReadingLocations || [])
         ])),
+      },
+      hardwareIndex: {
+        ...(existing.hardwareIndex || {}),
+        mvdStatus: newData.hardwareIndex?.mvdStatus || existing.hardwareIndex?.mvdStatus,
+        traversePoints: Array.from(new Set([
+          ...(existing.hardwareIndex?.traversePoints || []),
+          ...(newData.hardwareIndex?.traversePoints || [])
+        ])),
+        manufacturers: Array.from(new Set([
+          ...(existing.hardwareIndex?.manufacturers || []),
+          ...(newData.hardwareIndex?.manufacturers || [])
+        ])),
+        hardwareNotes: (existing.hardwareIndex?.hardwareNotes || '') + '\n' + (newData.hardwareIndex?.hardwareNotes || '')
       },
       shopDrawings: {
         confirmsDesign: existing.shopDrawings?.confirmsDesign ?? newData.shopDrawings?.confirmsDesign ?? true,
@@ -406,6 +441,7 @@ export default function App() {
                         type="file"
                         accept={mode === 'pdf' ? ".pdf" : ".xlsx,.xls"}
                         multiple
+                        webkitdirectory=""
                         onChange={handleFileChange}
                         className="absolute inset-0 opacity-0 cursor-pointer"
                       />

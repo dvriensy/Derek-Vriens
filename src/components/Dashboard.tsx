@@ -206,7 +206,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
           </div>
           <div className="col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-12">
             <DataField label="Project Name" value={data.projectIdentity.projectName} />
-            <DataField label="Site Address" value={data.projectIdentity.siteAddress} />
+            <DataField label="Project Location" value={data.projectIdentity.siteAddress} />
             <DataField label="Engineering Firm" value={data.projectIdentity.engineeringFirm} />
             <DataField label="System Type" value={data.projectIdentity.systemType} />
             <DataField label="System DNA" value={data.projectIdentity.classification} />
@@ -745,6 +745,19 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                     </div>
                   </div>
                </div>
+                <div className="space-y-3">
+                  <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">Consolidated Manufacturers</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(data.hardwareIndex?.manufacturers || []).map((m, i) => (
+                      <span key={i} className="px-2 py-1 bg-white/5 border border-white/5 text-[10px] text-zinc-300 rounded-sm font-mono">
+                        {m}
+                      </span>
+                    ))}
+                    {(!data.hardwareIndex?.manufacturers || data.hardwareIndex.manufacturers.length === 0) && (
+                      <span className="text-[10px] text-zinc-600 italic">No manufacturers identified in batch.</span>
+                    )}
+                  </div>
+                </div>
                <div className="space-y-3">
                   <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">Traverse Point Protocols</p>
                   <div className="space-y-2">
@@ -873,7 +886,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
             </div>
             <div className="col-span-3 space-y-16">
               {(data.equipmentSchedules?.units || []).filter(u => u.outlets && u.outlets.length > 0).map((unit, i) => {
-                const totalOutletVol = unit.outlets?.reduce((acc, o) => acc + o.designVolume, 0) || 0;
+                const totalOutletVol = unit.outlets?.reduce((acc, o) => acc + (o.designVolume * (o.quantity || 1)), 0) || 0;
                 const unitVariance = unit.designCfm > 0 ? Math.abs(((totalOutletVol - unit.designCfm) / unit.designCfm) * 100) : 0;
                 const hasTerminalDiscrepancy = unitVariance > 5;
 
@@ -898,6 +911,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                           <tr className="text-zinc-500 uppercase text-[9px] tracking-wider font-bold">
                             <th className="p-3 w-20">Outlet #</th>
                             <th className="p-3">Register Type</th>
+                            <th className="p-3">Manufacturer</th>
                             <th className="p-3">Duct Size</th>
                             <th className="p-3 text-right">Design ({isMetric ? 'L/s' : 'CFM'})</th>
                             <th className="p-3 w-32 border-l border-white/5 bg-white/5">Field Reading</th>
@@ -907,18 +921,33 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                           {unit.outlets?.map((outlet, oi) => (
                             <tr key={oi} className="hover:bg-white/[0.02] transition-colors">
                               <td className="p-3">
-                                <div className="flex flex-col">
-                                  <span className="font-mono text-zinc-500 font-bold">{outlet.outletNumber}</span>
-                                  {outlet.visualJustification && (
-                                    <span className="text-[8px] text-zinc-600 italic mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]" title={outlet.visualJustification}>
-                                      {outlet.visualJustification}
+                                <div className="flex items-center gap-2">
+                                  <div className="flex flex-col">
+                                    <span className="font-mono text-zinc-500 font-bold">{outlet.outletNumber}</span>
+                                    {outlet.visualJustification && (
+                                      <span className="text-[8px] text-zinc-600 italic mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]" title={outlet.visualJustification}>
+                                        {outlet.visualJustification}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {(outlet.quantity || 1) > 1 && (
+                                    <span className="px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold rounded-[2px]" title={`${outlet.quantity} devices at this location`}>
+                                      {outlet.quantity}x
                                     </span>
                                   )}
                                 </div>
                               </td>
                               <td className="p-3 text-zinc-300 font-medium">{outlet.registerType || '-'}</td>
+                              <td className="p-3 text-zinc-400 italic text-[10px] font-mono">{outlet.manufacturer || '-'}</td>
                               <td className="p-3 text-zinc-500 font-mono">{outlet.ductSize || '-'}</td>
-                              <td className="p-3 text-right font-mono font-bold text-white">{outlet.designVolume.toLocaleString()}</td>
+                              <td className="p-3 text-right font-mono font-bold text-white">
+                                {((outlet.quantity || 1) * outlet.designVolume).toLocaleString()}
+                                {(outlet.quantity || 1) > 1 && (
+                                  <div className="text-[9px] text-zinc-500 font-normal">
+                                    ({outlet.quantity} @ {outlet.designVolume})
+                                  </div>
+                                )}
+                              </td>
                               <td className="p-3 border-l border-white/5 bg-black/20 text-zinc-700 italic text-[10px] text-center">
                                 ________________
                               </td>
@@ -927,7 +956,7 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                         </tbody>
                         <tfoot className="bg-white/5">
                           <tr className="border-t-2 border-white/5 font-bold">
-                            <td colSpan={3} className="p-3 text-right uppercase text-[9px] tracking-widest text-zinc-500">Total System Design</td>
+                            <td colSpan={4} className="p-3 text-right uppercase text-[9px] tracking-widest text-zinc-500">Total System Design</td>
                             <td className="p-3 text-right font-mono text-base text-white">{totalOutletVol.toLocaleString()}</td>
                             <td className="bg-black/40"></td>
                           </tr>
