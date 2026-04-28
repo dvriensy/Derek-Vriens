@@ -6,7 +6,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AirBalanceData } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const ai = new GoogleGenAI({ 
+  apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' 
+});
 
 export const AIR_BALANCE_SCHEMA = {
   type: Type.OBJECT,
@@ -278,8 +280,8 @@ export const EXCEL_AUDIT_SCHEMA = {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function auditExcelReport(excelData: any[], retryCount = 0): Promise<any> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured.");
+  if (!import.meta.env.VITE_GEMINI_API_KEY) {
+    throw new Error("VITE_GEMINI_API_KEY is not configured.");
   }
 
   const excelContext = JSON.stringify(excelData, null, 2);
@@ -339,8 +341,8 @@ export async function auditExcelReport(excelData: any[], retryCount = 0): Promis
 }
 
 export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): Promise<AirBalanceData> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured.");
+  if (!import.meta.env.VITE_GEMINI_API_KEY) {
+    throw new Error("VITE_GEMINI_API_KEY is not configured.");
   }
 
     const prompt = `
