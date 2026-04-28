@@ -54,7 +54,10 @@ export const AIR_BALANCE_SCHEMA = {
         certifications: { type: Type.STRING },
         sectionRef: { type: Type.STRING },
         fireDamperDropTesting: { type: Type.BOOLEAN },
+        fireDamperCount: { type: Type.NUMBER },
+        fireDamperLocations: { type: Type.ARRAY, items: { type: Type.STRING } },
         soundReadingsRequired: { type: Type.BOOLEAN },
+        soundReadingLocations: { type: Type.ARRAY, items: { type: Type.STRING } },
         auditNotes: { type: Type.STRING },
       },
     },
@@ -73,6 +76,7 @@ export const AIR_BALANCE_SCHEMA = {
               staticPressure: { type: Type.STRING },
               notes: { type: Type.STRING },
               outletMathString: { type: Type.STRING, description: "Explicit math string for outlets, e.g., '75 + 50 + 50 = 175'" },
+              visualJustification: { type: Type.STRING, description: "Description of where this unit was found (e.g., 'Sheet M-101, Schedule 1')" },
               outlets: {
                 type: Type.ARRAY,
                 items: {
@@ -82,6 +86,7 @@ export const AIR_BALANCE_SCHEMA = {
                     registerType: { type: Type.STRING },
                     ductSize: { type: Type.STRING },
                     designVolume: { type: Type.NUMBER },
+                    visualJustification: { type: Type.STRING },
                   },
                   required: ["outletNumber", "designVolume"],
                 },
@@ -209,6 +214,19 @@ export const AIR_BALANCE_SCHEMA = {
       },
       required: ["keyFindings", "majorRedFlags", "complianceStatus", "overview"],
     },
+    designReconciliation: {
+      type: Type.OBJECT,
+      properties: {
+        scheduleDesignVolume: { type: Type.NUMBER },
+        shopDrawingVolume: { type: Type.NUMBER },
+        outletSumVolume: { type: Type.NUMBER },
+        reconciledVolume: { type: Type.NUMBER },
+        discrepancies: { type: Type.ARRAY, items: { type: Type.STRING } },
+        visualJustification: { type: Type.STRING },
+        status: { type: Type.STRING, enum: ['Matched', 'Discrepancy', 'Critical Error'] }
+      },
+      required: ["scheduleDesignVolume", "outletSumVolume", "reconciledVolume", "discrepancies", "status"]
+    },
   },
 };
 
@@ -234,6 +252,7 @@ export const EXCEL_AUDIT_SCHEMA = {
           severity: { type: Type.STRING, enum: ['Low', 'Medium', 'High', 'Critical'] },
           location: { type: Type.STRING },
           message: { type: Type.STRING },
+          visualJustification: { type: Type.STRING },
         },
         required: ["type", "severity", "location", "message"],
       },
@@ -347,17 +366,45 @@ export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): 
 
     const prompt = `
     Role: Expert HVAC Testing, Adjusting, and Balancing (TAB) Technical Assistant.
+
+    SYSTEM RIGOR - THREE-PASS AUDIT:
+    1. PASS 1 (INVENTORY): Perform an exhaustive scan of ALL pages. List every unique Unit Tag (AHU, EF, FCU, RTU) and Diffuser Tag (SD, SR, CD) found in the entire document. Do not skip any.
+    2. PASS 2 (EXTRACTION): For every single tag identified in Pass 1, crawl the document again to identify its associated design values: CFM (Airflow), Voltage/Phase, and Static Pressure (ESP).
+    3. PASS 3 (GAP AUDIT): Check for missing data. If a tag from your inventory (Pass 1) is found on a floor plan but has no corresponding value in a schedule, you MUST flag it in the 'findings' as a "Missing Schedule Value (High Severity)". Do not ignore missing parameters.
+
+    SELF-VERIFICATION & QUALITY ASSURANCE:
+    - Before outputting the JSON, you MUST perform a "Verification Pass".
+    - Check every Page Number cited: Does that page actually contain the unit or schedule mentioned?
+    - Fact-check CFM totals: Re-calculate all math strings. If they do not match the expected result, rewrite the finding.
+    - Check for Hallucinations: If you are unsure of a value, flag it as "Awaiting Clarification" instead of assuming.
+    - Correct any discrepancies found during this verification phase.
+
+    AIRFLOW UNIT PRIORITY:
+    - IDENTIFY AIRFLOW UNITS: Scan Equipment Schedule headers and the Drawing Legend to confirm if units are CFM or L/s.
+    - DO NOT ASSUME: If a value is listed as L/s, keep it as L/s and ensure 'measurementUnits' in 'projectIdentity' reflects 'Metric (L/s)'.
+    - UNIT ARRAY COMPLIANCE: Every identified mechanical unit MUST be returned in the 'equipmentSchedules.units' array. 
+    - NO OMISSIONS: Even if no technical data (CFM, Static Pressure) is found for a specific unit tag identified on a plan, you MUST return the unit object with the 'tag' and 'null' or '0' for missing numeric values rather than omitting the unit entirely.
+
+    SCHEMA COMPLIANCE & CRASH PREVENTION:
+    - MANDATORY KEYS: You MUST include "toolsRequired" in the 'logistics' object, "inletSizeNotes" in 'shopDrawings', and "units" in 'equipmentSchedules' in every response. Use empty arrays [] if no data is found.
+    - VISUAL EVIDENCE: For every discrepancy, data point, or equipment found, include a "visualJustification" field. Describe exactly where it is (e.g., "Sheet M-102, Top-right Schedule", "Note 4 on Page 3").
+    - DEFAULT VALUES: If a numeric value is unknown, use 0. If a string is unknown, use "". Never omit a required key.
+
     Perform a 10-point Precision Audit on the provided PDF drawing or specification:
     
     1. PROJECT IDENTITY & DNA: Extract site address, project name, engineering firm, and specifically classify the HVAC architecture (e.g., VAV with Reheat, RTU with CAV, HRV).
     2. GLOBAL AIR BALANCE RECONCILIATION: Perform a high-level "sanity check." Aggregate total volumes category (Supply, Return, Exhaust). Compare Total Design Volume of all equipment against any Diversified Totals listed. ALSO aggregate and extract TOTAL OUTDOOR AIR (OA) volumes per system type.
     3. TAB SPEC COMPLIANCE (Section 23 05 93): Scan for tolerances (e.g., +/- 5% or 10%), Certifications (AABC or NEBB), and mandated Instrumentation (e.g., Pitot tubes).
-    4. FIRE DAMPER DROP TESTING: Specifically scan job notes and specifications for requirements regarding "Fire Damper Drop Testing" or "Smoke Damper Verification." This is mandatory for job site compliance audit.
-    5. SOUND READINGS: Check if "Sound Pressure Level Readings" or "NC Level Verification" are required in specific rooms or building-wide.
+    4. FIRE DAMPER DROP TESTING: Specifically scan job notes and specifications for requirements regarding "Fire Damper Drop Testing" or "Smoke Damper Verification." 
+       MANDATORY: Count the number of dampers and list their specific locations found in drawings/notes in 'fireDamperCount' and 'fireDamperLocations'.
+    5. SOUND READINGS: Check if "Sound Pressure Level Readings" or "NC Level Verification" are required. List specific room names/numbers where these are mandated in 'soundReadingLocations'.
     6. EXCLUSION: Do NOT mention or extract calibration dates for any equipment. This is a specific request to keep the report concise.
     7. MATH SUMMATION AUDIT: Provide an explicit math string for every unit's outlet summation (e.g., "75 + 50 + 50 + 50 = 225"). Compare this sum to the unit's rated capacity. Flag any variance > 5%. 
-       IMPORTANT: For CAV (Constant Air Volume) systems where terminal boxes (VAVs) are absent, the 'totalVavCfm' (Terminal Box Sum) must NOT be 0; instead, it must be the aggregate sum of ALL individual outlets (diffusers/grilles) listed. Ensure 'mathString' reflects this addition.
-    8. SHOP DRAWING VERIFICATION: Cross-reference design drawings with contractor submittals. Check if equipment matches airflow and physical requirements (like inlet sizes).
+       IMPORTANT MATH LOGIC: If the sum of individual outlets EQUALS the main unit's design CFM, you MUST NOT report a discrepancy. Re-verify your arithmetic multiple times. Hallucinating a deficit where the math is correct is a critical failure.
+       NOTE: For CAV (Constant Air Volume) systems where terminal boxes (VAVs) are absent, the 'totalVavCfm' (Terminal Box Sum) must NOT be 0; instead, it must be the aggregate sum of ALL individual outlets (diffusers/grilles) listed. Ensure 'mathString' reflects this addition.
+    8. SHOP DRAWING & SCHEDULE CROSS-REFERENCE: Reconcile schedules with shop drawings and plan outlets. MANDATORY STEPS: (1) Locate 'Mechanical Equipment Schedule' and identify 'Design CFM' column. (2) Find 'Diffuser Schedule' (or plan callouts) and sum all 'Airflow' values. (3) Compare these to determine the "Actual Design Total Air Volume." Populate 'designReconciliation' with status and detailed discrepancies. 
+       VISUAL JUSTIFICATION: For every discrepancy, you MUST provide a "Visual Justification". Describe exactly where the conflicting info is located (e.g., 'Bottom-right legend of Sheet M-103' or 'Next to the red-lined revision cloud on Page 5'). Explain visual cues like 'tag shows 150 L/s but branch line matches 500 CFM scale'.
+       RECONCILIATION MATH: Ensure 'outletSumVolume' is the EXACT arithmetic sum of the diffusers you identified. Double-check your own calculation before determining the 'status'.
     9. DIVERSITY AUDIT: Calculate the ratio of total peak flow of all outlets to unit capacity. If ratio is >105% and no "Diversity Note" exists, flag as Capacity Risk.
     10. PRESSURE PATH ANALYSIS: Compare External Static Pressure (ESP) in schedules to ductwork complexity (long runs, excessive elbows) on plans. Flag Bottleneck Risks.
     11. HARDWARE INDEX: Identify presence of Manual Volume Dampers (MVDs) for balanceability and specify Pitot Traverse locations for accurate measurements.
@@ -417,6 +464,52 @@ export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): 
     }
 
     console.error("Gemini analysis failed:", error);
+    throw error;
+  }
+}
+
+export async function queryPDFReport(base64Data: string, question: string): Promise<string> {
+  if (!import.meta.env.VITE_GEMINI_API_KEY) {
+    throw new Error("VITE_GEMINI_API_KEY is not configured.");
+  }
+
+  const ai = new GoogleGenAI({ 
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' 
+  });
+
+  const prompt = `
+    Role: Expert HVAC Quality Control Inspector.
+    Task: Answer a specific technical question about the provided PDF document.
+    Question: ${question}
+    
+    Guidelines:
+    1. Focus on Unit Identification, Specific Items, or Procedures requested.
+    2. Be concise but technically precise.
+    3. If the information is not in the document, state that clearly.
+    4. Reference specific page numbers or schedule names if possible.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: "application/pdf",
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    return response.text;
+  } catch (error: any) {
+    console.error("PDF Query failed:", error);
     throw error;
   }
 }

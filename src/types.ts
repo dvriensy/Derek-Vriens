@@ -29,7 +29,10 @@ export interface AirBalanceData {
     certifications?: string; // e.g. AABC, NEBB
     sectionRef?: string; // usually 23 05 93
     fireDamperDropTesting?: boolean;
+    fireDamperCount?: number;
+    fireDamperLocations?: string[];
     soundReadingsRequired?: boolean;
+    soundReadingLocations?: string[];
     auditNotes?: string;
   };
   equipmentSchedules: {
@@ -88,6 +91,7 @@ export interface AirBalanceData {
   ocrInsight?: string; // High-level technical discovery of the document
   rawTextFeed?: string; // Raw text transcript extracted from the PDF
   executiveSummary?: ExecutiveSummary;
+  designReconciliation?: DesignReconciliation;
   
   // Excel Audit specific field
   excelAudit?: ExcelAuditReport;
@@ -98,6 +102,16 @@ export interface ExecutiveSummary {
   majorRedFlags: string[];
   complianceStatus: 'Compliant' | 'Non-Compliant' | 'Conditional';
   overview: string;
+}
+
+export interface DesignReconciliation {
+  scheduleDesignVolume: number;
+  shopDrawingVolume?: number;
+  outletSumVolume: number;
+  reconciledVolume: number;
+  discrepancies: string[];
+  visualJustification?: string;
+  status: 'Matched' | 'Discrepancy' | 'Critical Error';
 }
 
 export interface ExcelAuditReport {
@@ -124,6 +138,7 @@ export interface ExcelFinding {
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
   location: string; // e.g. "Unit AHU-1 Row"
   message: string;
+  visualJustification?: string;
 }
 
 export interface TABEquipment {
@@ -135,6 +150,7 @@ export interface TABEquipment {
   notes?: string;
   outletMathString?: string; // e.g. "100 + 100 + 200 = 400"
   outlets?: TABOutlet[];
+  visualJustification?: string;
 }
 
 export interface TABOutlet {
@@ -142,6 +158,7 @@ export interface TABOutlet {
   registerType: string; // e.g. SD-1, Perforated
   ductSize: string;     // e.g. 8"Ø, 12x10
   designVolume: number;
+  visualJustification?: string;
 }
 
 export type ExtractionStatus = 'idle' | 'loading' | 'success' | 'error';

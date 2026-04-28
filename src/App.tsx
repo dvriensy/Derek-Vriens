@@ -9,7 +9,7 @@ import { Upload, FileUp, Loader2, AlertCircle, RefreshCw, DraftingCompass, Wind,
 import * as pdfjs from 'pdfjs-dist';
 // Import the worker using Vite's ?url suffix to get a bundled path
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-import { analyzeAirBalancePDF, auditExcelReport } from './lib/gemini';
+import { analyzeAirBalancePDF, auditExcelReport, queryPDFReport } from './lib/gemini';
 import { fileToBase64, parseExcelFile, cn } from './lib/utils';
 import { AirBalanceData, ExtractionStatus, ExcelAuditReport } from './types';
 import { Dashboard } from './components/Dashboard';
@@ -25,6 +25,7 @@ export default function App() {
   const [data, setData] = useState<AirBalanceData | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [excelRawData, setExcelRawData] = useState<any[] | null>(null);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
 
   const [progress, setProgress] = useState(0);
   const [progressStage, setProgressStage] = useState("");
@@ -89,6 +90,7 @@ export default function App() {
           setProgressStage(`Performing OCR on ${file.name} (${i + 1}/${pdfs.length})`);
           
           const base64 = await fileToBase64(file);
+          setPdfBase64(prev => prev || base64); // Store the first PDF base64 for querying
           
           // Extract raw text for grounding (OCR booster)
           let technicalTranscript = "";
@@ -219,48 +221,60 @@ export default function App() {
       },
       // Merge equipment
       equipmentSchedules: {
-        ...existing.equipmentSchedules,
         units: [
-          ...existing.equipmentSchedules.units,
-          ...newData.equipmentSchedules.units.filter(u => 
-            !existing.equipmentSchedules.units.some(eu => eu.tag === u.tag)
+          ...(existing.equipmentSchedules?.units || []),
+          ...(newData.equipmentSchedules?.units || []).filter(u => 
+            !(existing.equipmentSchedules?.units || []).some(eu => eu.tag === u.tag)
           )
         ],
-        // Re-calculate summation if needed or just use current if it's more complete
-        vavSummation: newData.equipmentSchedules.vavSummation.totalVavCfm > existing.equipmentSchedules.vavSummation.totalVavCfm 
-          ? newData.equipmentSchedules.vavSummation 
-          : existing.equipmentSchedules.vavSummation
+        vavSummation: (newData.equipmentSchedules?.vavSummation?.totalVavCfm || 0) > (existing.equipmentSchedules?.vavSummation?.totalVavCfm || 0) 
+          ? newData.equipmentSchedules?.vavSummation || existing.equipmentSchedules?.vavSummation || { totalVavCfm: 0, mainUnitCfm: 0, discrepancy: 0 }
+          : existing.equipmentSchedules?.vavSummation || newData.equipmentSchedules?.vavSummation || { totalVavCfm: 0, mainUnitCfm: 0, discrepancy: 0 }
       },
       // Concat lists
       tabSpecs: {
-        ...existing.tabSpecs,
+        ...(existing.tabSpecs || {}),
         instrumentation: Array.from(new Set([
-          ...(existing.tabSpecs.instrumentation || []),
-          ...(newData.tabSpecs.instrumentation || [])
-        ]))
+          ...(existing.tabSpecs?.instrumentation || []),
+          ...(newData.tabSpecs?.instrumentation || [])
+        ])),
+        fireDamperCount: Math.max(existing.tabSpecs?.fireDamperCount || 0, newData.tabSpecs?.fireDamperCount || 0),
+        fireDamperLocations: Array.from(new Set([
+          ...(existing.tabSpecs?.fireDamperLocations || []),
+          ...(newData.tabSpecs?.fireDamperLocations || [])
+        ])),
+        soundReadingLocations: Array.from(new Set([
+          ...(existing.tabSpecs?.soundReadingLocations || []),
+          ...(newData.tabSpecs?.soundReadingLocations || [])
+        ])),
       },
       shopDrawings: {
-        ...existing.shopDrawings,
-        inletSizeNotes: [...(existing.shopDrawings.inletSizeNotes || []), ...(newData.shopDrawings.inletSizeNotes || [])],
-        physicalConstraints: [...(existing.shopDrawings.physicalConstraints || []), ...(newData.shopDrawings.physicalConstraints || [])],
+        confirmsDesign: existing.shopDrawings?.confirmsDesign ?? newData.shopDrawings?.confirmsDesign ?? true,
+        inletSizeNotes: [...(existing.shopDrawings?.inletSizeNotes || []), ...(newData.shopDrawings?.inletSizeNotes || [])],
+        physicalConstraints: [...(existing.shopDrawings?.physicalConstraints || []), ...(newData.shopDrawings?.physicalConstraints || [])],
+        crossRefDetails: newData.shopDrawings?.crossRefDetails || existing.shopDrawings?.crossRefDetails
       },
       fieldStrategy: {
-        ...existing.fieldStrategy,
-        balancingSequences: [...(existing.fieldStrategy.balancingSequences || []), ...(newData.fieldStrategy.balancingSequences || [])],
-        checklists: [...existing.fieldStrategy.checklists, ...newData.fieldStrategy.checklists]
+        plenumReturnIdentified: existing.fieldStrategy?.plenumReturnIdentified ?? newData.fieldStrategy?.plenumReturnIdentified ?? false,
+        balancingSequences: [...(existing.fieldStrategy?.balancingSequences || []), ...(newData.fieldStrategy?.balancingSequences || [])],
+        checklists: [...(existing.fieldStrategy?.checklists || []), ...(newData.fieldStrategy?.checklists || [])],
+        strategyNotes: newData.fieldStrategy?.strategyNotes || existing.fieldStrategy?.strategyNotes,
+        firstHourStrategy: newData.fieldStrategy?.firstHourStrategy || existing.fieldStrategy?.firstHourStrategy,
+        turbulentAreas: Array.from(new Set([...(existing.fieldStrategy?.turbulentAreas || []), ...(newData.fieldStrategy?.turbulentAreas || [])]))
       },
       preBalanceReadiness: {
-        ...existing.preBalanceReadiness,
-        checklist: [...existing.preBalanceReadiness.checklist, ...newData.preBalanceReadiness.checklist],
+        systemOverview: existing.preBalanceReadiness?.systemOverview || newData.preBalanceReadiness?.systemOverview || "",
+        checklist: [...(existing.preBalanceReadiness?.checklist || []), ...(newData.preBalanceReadiness?.checklist || [])],
         criticalDeficiencies: Array.from(new Set([
-          ...existing.preBalanceReadiness.criticalDeficiencies,
-          ...newData.preBalanceReadiness.criticalDeficiencies
+          ...(existing.preBalanceReadiness?.criticalDeficiencies || []),
+          ...(newData.preBalanceReadiness?.criticalDeficiencies || [])
         ]))
       },
       logistics: {
-        toolsRequired: Array.from(new Set([...existing.logistics.toolsRequired, ...newData.logistics.toolsRequired])),
-        criticalPaths: Array.from(new Set([...existing.logistics.criticalPaths, ...newData.logistics.criticalPaths])),
-      }
+        toolsRequired: Array.from(new Set([...(existing.logistics?.toolsRequired || []), ...(newData.logistics?.toolsRequired || [])])),
+        criticalPaths: Array.from(new Set([...(existing.logistics?.criticalPaths || []), ...(newData.logistics?.criticalPaths || [])])),
+      },
+      designReconciliation: newData.designReconciliation || existing.designReconciliation
     };
   };
 
@@ -530,6 +544,7 @@ export default function App() {
                   sourceFileName={files.length > 0 ? files[0].name : 'Unknown_File'} 
                   onUpdateData={(updated) => setData({ ...updated })}
                   fileCount={files.length}
+                  pdfBase64={pdfBase64}
                 />
               )}
             </motion.div>

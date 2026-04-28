@@ -5,11 +5,12 @@
 
 import React from 'react';
 import { motion } from "motion/react";
-import { CheckCircle2, ChevronRight, DraftingCompass, MapPin, Ruler, Wind, FileText, Download, AlertCircle, Wrench, Zap, Clock, ScanText, Search } from "lucide-react";
+import { CheckCircle2, ChevronRight, DraftingCompass, MapPin, Ruler, Wind, FileText, Download, AlertCircle, Wrench, Zap, Clock, ScanText, Search, Send, HelpCircle, Loader2 } from "lucide-react";
 import { AirBalanceData } from "../types";
 import { generateAirBalanceReport } from "../lib/pdfReport";
 import { ExecutiveSummary } from "./ExecutiveSummary";
 import { cn } from "../lib/utils";
+import { queryPDFReport } from "../lib/gemini";
 
 interface DashboardProps {
   data: AirBalanceData;
@@ -17,10 +18,14 @@ interface DashboardProps {
   onUpdateData?: (data: AirBalanceData) => void;
   fileCount?: number;
   hideAIAuditSections?: boolean;
+  pdfBase64?: string | null;
 }
 
-export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideAIAuditSections }: DashboardProps) {
+export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideAIAuditSections, pdfBase64 }: DashboardProps) {
   const [completedFindings, setCompletedFindings] = React.useState<string[]>([]);
+  const [query, setQuery] = React.useState('');
+  const [isQuerying, setIsQuerying] = React.useState(false);
+  const [queryResponse, setQueryResponse] = React.useState<{ q: string, a: string }[]>([]);
 
   const isMetric = data.projectIdentity.measurementUnits === 'Metric (L/s)';
   const convertToCfm = (ls: number) => ls * 2.119;
@@ -42,6 +47,24 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
     setCompletedFindings(prev => 
       prev.includes(def) ? prev.filter(d => d !== def) : [...prev, def]
     );
+  };
+
+  const handleQuery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim() || !pdfBase64 || isQuerying) return;
+
+    try {
+      setIsQuerying(true);
+      const question = query.trim();
+      setQuery('');
+      
+      const response = await queryPDFReport(pdfBase64, question);
+      setQueryResponse(prev => [{ q: question, a: response }, ...prev]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsQuerying(false);
+    }
   };
 
   const vavSummationData = data.equipmentSchedules?.vavSummation || { discrepancy: 0, mainUnitCfm: 0, totalVavCfm: 0, mathString: '' };
@@ -252,6 +275,105 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
           </div>
         </div>
 
+        {/* 12. Design Reconciliation Audit (Shop Drawings vs Schedules vs Outlets) */}
+        {data.designReconciliation && (
+          <div className="grid grid-cols-1 md:grid-cols-4 py-12 items-start border-t border-white/5 bg-blue-500/[0.02]">
+            <div className="col-span-1">
+              <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-blue-400 mb-4 md:mb-0 flex items-center gap-2">
+                <DraftingCompass className="w-3 h-3" />
+                Cross-Reference Audit
+              </h3>
+            </div>
+            <div className="col-span-3 space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-6 bg-black border border-white/5 rounded-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[9px] uppercase font-bold text-zinc-500">Mechanical Schedule</p>
+                    <FileText className="w-3 h-3 text-zinc-700" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-mono font-bold text-white">{data.designReconciliation.scheduleDesignVolume.toLocaleString()}</span>
+                    <span className="text-[10px] text-zinc-500">{isMetric ? 'L/s' : 'CFM'}</span>
+                  </div>
+                </div>
+                <div className="p-6 bg-black border border-white/5 rounded-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[9px] uppercase font-bold text-zinc-500">Shop Drawings</p>
+                    <Ruler className="w-3 h-3 text-zinc-700" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-mono font-bold text-white">
+                      {data.designReconciliation.shopDrawingVolume?.toLocaleString() || 'N/A'}
+                    </span>
+                    <span className="text-[10px] text-zinc-500">{isMetric ? 'L/s' : 'CFM'}</span>
+                  </div>
+                </div>
+                <div className="p-6 bg-black border border-white/5 rounded-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[9px] uppercase font-bold text-zinc-500">Plan Outlet Sum</p>
+                    <Wind className="w-3 h-3 text-zinc-700" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-mono font-bold text-white">{data.designReconciliation.outletSumVolume.toLocaleString()}</span>
+                    <span className="text-[10px] text-zinc-500">{isMetric ? 'L/s' : 'CFM'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-8 rounded-sm border-l-4 flex flex-col lg:flex-row justify-between items-center gap-8 shadow-xl",
+                data.designReconciliation.status === 'Matched' ? "bg-emerald-500/5 border-emerald-500" :
+                data.designReconciliation.status === 'Discrepancy' ? "bg-amber-500/5 border-amber-500" : "bg-red-500/5 border-red-500"
+              )}>
+                <div className="flex-1 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest",
+                      data.designReconciliation.status === 'Matched' ? "bg-emerald-500 text-white" :
+                      data.designReconciliation.status === 'Discrepancy' ? "bg-amber-500 text-white" : "bg-red-500 text-white"
+                    )}>
+                      {data.designReconciliation.status}
+                    </div>
+                    <h4 className="text-sm font-bold text-zinc-200 uppercase tracking-wider">Actual Design Air Volume</h4>
+                  </div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-4xl font-mono font-bold text-teal-400 tracking-tighter">
+                      {data.designReconciliation.reconciledVolume.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-bold text-zinc-500 uppercase">{isMetric ? 'L/s' : 'CFM'}</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 italic">Determined by cross-referenced triangulation across all documentation.</p>
+                </div>
+                
+                <div className="w-full lg:w-2/3 space-y-4">
+                  <p className="text-[9px] uppercase font-bold text-zinc-500 tracking-widest">Audit Discrepancy Log</p>
+                  <div className="space-y-2">
+                    {data.designReconciliation.discrepancies.map((d, i) => (
+                      <div key={i} className="flex flex-col gap-1 p-3 bg-black/40 border border-white/5 rounded-sm">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-3.5 h-3.5 text-zinc-500 mt-0.5" />
+                          <p className="text-[11px] text-zinc-300 italic">"{d}"</p>
+                        </div>
+                        {data.designReconciliation?.visualJustification && (
+                          <p className="text-[9px] text-blue-400 font-mono pl-6.5">
+                            REF: {data.designReconciliation.visualJustification}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    {data.designReconciliation.discrepancies.length === 0 && (
+                      <div className="flex items-center gap-2 text-emerald-500 p-2 text-[10px] font-bold uppercase">
+                        <CheckCircle2 className="w-3 h-3" />
+                        No Critical Discrepancies Found
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 3. TAB Specs & Logistics */}
         {!hideAIAuditSections && (
           <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start">
@@ -266,26 +388,61 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4">
-              <div className={cn(
-                "p-4 border rounded-sm flex items-center justify-between",
-                data.tabSpecs.fireDamperDropTesting ? "bg-amber-500/10 border-amber-500/30" : "bg-white/5 border-white/5 opacity-50"
-              )}>
-                <div className="flex items-center gap-3">
-                  <div className={cn("w-2 h-2 rounded-full", data.tabSpecs.fireDamperDropTesting ? "bg-amber-500 animate-pulse" : "bg-zinc-600")} />
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-[#F5F5F4]">Fire Damper Drop Testing</span>
+              <div className="space-y-4">
+                <div className={cn(
+                  "p-4 border rounded-sm flex items-center justify-between",
+                  data.tabSpecs.fireDamperDropTesting ? "bg-amber-500/10 border-amber-500/30" : "bg-white/5 border-white/5 opacity-50"
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className={cn("w-2 h-2 rounded-full", data.tabSpecs.fireDamperDropTesting ? "bg-amber-500 animate-pulse" : "bg-zinc-600")} />
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-[#F5F5F4]">Fire Damper Drop Testing</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-[9px] font-mono text-zinc-500">{data.tabSpecs.fireDamperDropTesting ? "REQUIRED" : "NOT SPECIFIED"}</span>
+                    {data.tabSpecs.fireDamperCount !== undefined && data.tabSpecs.fireDamperCount > 0 && (
+                      <span className="text-[8px] font-bold text-amber-500 uppercase tracking-tighter">Qty: {data.tabSpecs.fireDamperCount} Found</span>
+                    )}
+                  </div>
                 </div>
-                <span className="text-[9px] font-mono text-zinc-500">{data.tabSpecs.fireDamperDropTesting ? "REQUIRED" : "NOT SPECIFIED"}</span>
+                {data.tabSpecs.fireDamperLocations && data.tabSpecs.fireDamperLocations.length > 0 && (
+                  <div className="p-3 bg-black/40 border border-white/5 rounded-sm max-h-32 overflow-y-auto">
+                    <p className="text-[8px] uppercase font-bold text-zinc-600 mb-2 tracking-widest">Identified Damper Locations</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {data.tabSpecs.fireDamperLocations.map((loc, i) => (
+                        <span key={i} className="text-[9px] text-amber-500/80 font-mono italic flex items-center gap-1.5">
+                          <span className="w-1 h-1 rounded-full bg-amber-500/30" />
+                          {loc}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               
-              <div className={cn(
-                "p-4 border rounded-sm flex items-center justify-between",
-                data.tabSpecs.soundReadingsRequired ? "bg-blue-500/10 border-blue-500/30" : "bg-white/5 border-white/5 opacity-50"
-              )}>
-                <div className="flex items-center gap-3">
-                  <div className={cn("w-2 h-2 rounded-full", data.tabSpecs.soundReadingsRequired ? "bg-blue-500 animate-pulse" : "bg-zinc-600")} />
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-[#F5F5F4]">Sound Level NC Readings</span>
+              <div className="space-y-4">
+                <div className={cn(
+                  "p-4 border rounded-sm flex items-center justify-between",
+                  data.tabSpecs.soundReadingsRequired ? "bg-blue-500/10 border-blue-500/30" : "bg-white/5 border-white/5 opacity-50"
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className={cn("w-2 h-2 rounded-full", data.tabSpecs.soundReadingsRequired ? "bg-blue-500 animate-pulse" : "bg-zinc-600")} />
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-[#F5F5F4]">Sound Level NC Readings</span>
+                  </div>
+                  <span className="text-[9px] font-mono text-zinc-500">{data.tabSpecs.soundReadingsRequired ? "REQUIRED" : "NOT SPECIFIED"}</span>
                 </div>
-                <span className="text-[9px] font-mono text-zinc-500">{data.tabSpecs.soundReadingsRequired ? "REQUIRED" : "NOT SPECIFIED"}</span>
+                {data.tabSpecs.soundReadingLocations && data.tabSpecs.soundReadingLocations.length > 0 && (
+                  <div className="p-3 bg-black/40 border border-white/5 rounded-sm max-h-32 overflow-y-auto">
+                    <p className="text-[8px] uppercase font-bold text-zinc-600 mb-2 tracking-widest">Mandated Audit Areas</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {data.tabSpecs.soundReadingLocations.map((loc, i) => (
+                        <span key={i} className="text-[9px] text-blue-500/80 font-mono italic flex items-center gap-1.5">
+                          <span className="w-1 h-1 rounded-full bg-blue-500/30" />
+                          {loc}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -345,7 +502,16 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                     const isCritical = parseFloat(unit.staticPressure || "0") > 0.5;
                     return (
                       <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="p-3 font-mono font-bold text-zinc-200 uppercase">{unit.tag}</td>
+                        <td className="p-3">
+                          <div className="flex flex-col">
+                            <span className="font-mono font-bold text-zinc-200 uppercase">{unit.tag}</span>
+                            {unit.visualJustification && (
+                              <span className="text-[9px] text-zinc-500 italic mt-0.5 line-clamp-1 group-hover:line-clamp-none transition-all">
+                                {unit.visualJustification}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3 text-right font-mono text-zinc-300">{(unit.designCfm || 0).toLocaleString()}</td>
                         <td className="p-3 text-right font-mono text-zinc-500">{(unit.outdoorAirCfm || 0).toLocaleString()}</td>
                         {isMetric && (
@@ -740,7 +906,16 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                         <tbody className="divide-y divide-white/[0.03]">
                           {unit.outlets?.map((outlet, oi) => (
                             <tr key={oi} className="hover:bg-white/[0.02] transition-colors">
-                              <td className="p-3 font-mono text-zinc-500 font-bold">{outlet.outletNumber}</td>
+                              <td className="p-3">
+                                <div className="flex flex-col">
+                                  <span className="font-mono text-zinc-500 font-bold">{outlet.outletNumber}</span>
+                                  {outlet.visualJustification && (
+                                    <span className="text-[8px] text-zinc-600 italic mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]" title={outlet.visualJustification}>
+                                      {outlet.visualJustification}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="p-3 text-zinc-300 font-medium">{outlet.registerType || '-'}</td>
                               <td className="p-3 text-zinc-500 font-mono">{outlet.ductSize || '-'}</td>
                               <td className="p-3 text-right font-mono font-bold text-white">{outlet.designVolume.toLocaleString()}</td>
@@ -832,6 +1007,93 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
           </div>
        </div>
     </div>
+
+    {/* 11. PDF Deep Query - Interactive Inquiry */}
+    {pdfBase64 && !hideAIAuditSections && (
+      <div className="grid grid-cols-1 md:grid-cols-4 py-12 items-start border-t border-white/5">
+        <div className="col-span-1">
+          <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0 flex items-center gap-2">
+            <HelpCircle className="w-3 h-3" />
+            11. PDF Deep Query
+          </h3>
+        </div>
+        <div className="col-span-3 space-y-8">
+          <div className="bg-[#141414] border border-white/5 rounded-sm p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider">Interactive PDF Inquiry</h4>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Query unit identification, procedures, or spec details</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleQuery} className="relative mb-8">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Ask about specific units, procedures, or items in the drawing..."
+                className="w-full bg-black border border-white/10 rounded-sm py-4 px-6 text-sm text-zinc-200 focus:outline-none focus:border-blue-500/50 transition-all pr-12"
+                disabled={isQuerying}
+              />
+              <button
+                type="submit"
+                disabled={isQuerying || !query.trim()}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-500 hover:text-white disabled:opacity-30 transition-all"
+              >
+                {isQuerying ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
+            </form>
+
+            <div className="space-y-6">
+              {queryResponse.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 border border-dashed border-white/5 rounded-sm">
+                  <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-bold">No Inquiries Yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                  {queryResponse.map((res, i) => (
+                    <div key={i} className="space-y-3 animate-in slide-in-from-top-2 duration-300">
+                      <div className="flex items-start gap-4">
+                        <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-[9px] font-bold text-zinc-400">Q</span>
+                        </div>
+                        <p className="text-xs font-bold text-zinc-300 italic pt-1">"{res.q}"</p>
+                      </div>
+                      <div className="flex items-start gap-4 p-4 bg-zinc-900/50 border border-white/5 rounded-sm">
+                        <div className="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <DraftingCompass className="w-3.5 h-3.5 text-emerald-400" />
+                        </div>
+                        <div className="text-xs leading-relaxed text-zinc-400 prose prose-invert max-w-none">
+                          {res.a.split('\n').map((line, idx) => (
+                            <p key={idx} className={idx > 0 ? "mt-2" : ""}>{line}</p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
+            {['Find AHU-1 specs', 'Show Fire Damper notes', 'What is the ESP for exhaust fans?', 'Identify MVD locations'].map((hint) => (
+              <button
+                key={hint}
+                onClick={() => setQuery(hint)}
+                className="px-3 py-1.5 bg-zinc-900 border border-white/5 rounded-sm text-[9px] font-bold text-zinc-500 uppercase tracking-widest hover:border-zinc-500 hover:text-white transition-all"
+              >
+                {hint}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
   </div>
 );
 }
