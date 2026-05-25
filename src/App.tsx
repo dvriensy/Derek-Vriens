@@ -26,6 +26,7 @@ export default function App() {
   const [files, setFiles] = useState<File[]>([]);
   const [excelRawData, setExcelRawData] = useState<any[] | null>(null);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [uploadFolder, setUploadFolder] = useState(false);
 
   const [progress, setProgress] = useState(0);
   const [progressStage, setProgressStage] = useState("");
@@ -429,32 +430,81 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="relative">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-zinc-950/40 p-2.5 rounded-lg border border-white/5">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono font-bold">Select Upload Method:</span>
+                    <div className="flex bg-zinc-900 border border-white/5 rounded-sm p-0.5">
+                      <button
+                        onClick={() => setUploadFolder(false)}
+                        className={cn(
+                          "px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer",
+                          !uploadFolder ? "bg-zinc-100 text-black shadow" : "text-zinc-500 hover:text-zinc-300"
+                        )}
+                        type="button"
+                      >
+                        Multiple Files
+                      </button>
+                      <button
+                        onClick={() => setUploadFolder(true)}
+                        className={cn(
+                          "px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest transition-all rounded-sm cursor-pointer",
+                          uploadFolder ? "bg-zinc-100 text-black shadow" : "text-zinc-500 hover:text-zinc-300"
+                        )}
+                        type="button"
+                      >
+                        Entire Folder
+                      </button>
+                    </div>
+                  </div>
+
                   <div
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={onDrop}
-                    className="relative group h-full"
+                    className="relative group h-full min-h-[400px]"
                   >
                     <div className="absolute -inset-1 bg-gradient-to-r from-zinc-800 to-zinc-900 rounded-2xl blur-xl opacity-20 group-hover:opacity-40 transition duration-1000"></div>
                     <div className="relative h-full flex flex-col items-center justify-center border border-white/10 bg-[#141414] hover:border-white/30 transition-all rounded-xl p-12 text-center cursor-pointer min-h-[400px]">
-                      <input
-                        type="file"
-                        accept={mode === 'pdf' ? ".pdf" : ".xlsx,.xls"}
-                        multiple
-                        webkitdirectory=""
-                        onChange={handleFileChange}
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                      />
+                      {uploadFolder ? (
+                        <input
+                          type="file"
+                          accept={mode === 'pdf' ? ".pdf,.xlsx,.xls" : ".xlsx,.xls,.pdf"}
+                          multiple
+                          webkitdirectory=""
+                          onChange={handleFileChange}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                      ) : (
+                        <input
+                          type="file"
+                          accept={mode === 'pdf' ? ".pdf,.xlsx,.xls" : ".xlsx,.xls,.pdf"}
+                          multiple
+                          onChange={handleFileChange}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                      )}
+                      
                       <div className="space-y-8">
                         <div className="w-20 h-20 bg-[#0A0A0A] rounded-full flex items-center justify-center mx-auto border border-white/5 group-hover:bg-[#F5F5F4] group-hover:border-[#F5F5F4] transition-all duration-500">
                            <FileUp className="w-8 h-8 text-zinc-600 group-hover:text-[#141414] transition-colors" />
                         </div>
                         <div className="space-y-2">
                            <p className="text-[#F5F5F4] font-medium text-lg">
-                             {mode === 'pdf' ? 'Drop PDF Drawing Set' : 'Drop Excel Balance Report'}
+                             {uploadFolder 
+                               ? 'Drop Folder of Drawings/Reports' 
+                               : (mode === 'pdf' ? 'Drop PDF Drawing Set' : 'Drop Excel Balance Report')
+                             }
                            </p>
                            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono text-center">
-                             {mode === 'pdf' ? 'Surgical Drawing Audit' : 'Rigorous Quality Control'}
+                             {uploadFolder
+                               ? 'Select Entire Project Directory'
+                               : (mode === 'pdf' ? 'Surgical Drawing Audit' : 'Rigorous Quality Control')
+                             }
+                           </p>
+                           <p className="text-[9px] text-zinc-600 italic">
+                             {uploadFolder 
+                               ? 'Or click to select folder'
+                               : 'Or click to select multiple files'
+                             }
                            </p>
                         </div>
                       </div>
