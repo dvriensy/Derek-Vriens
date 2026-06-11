@@ -419,7 +419,9 @@ export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): 
     10. DIVERSITY AUDIT: Calculate the ratio of total peak flow of all outlets (including multipliers) to unit capacity. If ratio is >105% and no "Diversity Note" exists, flag as Capacity Risk.
     11. PRESSURE PATH ANALYSIS: Compare External Static Pressure (ESP) in schedules to ductwork complexity (long runs, excessive elbows) on plans. Flag Bottleneck Risks.
     12. HARDWARE INDEX: Identify presence of Manual Volume Dampers (MVDs) for balanceability and specify Pitot Traverse locations for accurate measurements.
-    13. EXECUTIVE SUMMARY: Generate a high-level summary for leadership highlighting the critical path forward, major project risks, and overall drawing compliance.
+    13. EXECUTIVE SUMMARY & OUTSIDE AIR DESIGN MANDATE: Generate a high-level summary for leadership highlighting the critical path forward, major project risks, overall drawing compliance, and outside air designs.
+        - OUTSIDE AIR ACTIONS: You MUST actively scan the entire document/drawings for any outside air (OA) designs, minimum outdoor air volume requirements, outdoor vent ventilation rates, or OA schedules. 
+        - SUMMARY INTEGRATION: Incorporate a clear, dedicated highlight of these outside air designs and ventilation rates under your Key Technical Findings and Executive Summary Overview. Ensure they are prominently identified.
 
     TECHNICAL OCR & DOCUMENT DISCOVERY:
     - Perform a "Digital Scan" to extract all technical text from schedules, legends, and specification blocks.
@@ -552,7 +554,7 @@ export async function reconcileProjectData(projectData: AirBalanceData): Promise
     4. HARDWARE CONSOLIDATION: Group and list all unique manufacturers (e.g., Titus, Price) into a unified Hardware Index.
     5. PATH RISK: Flag any major systemic risks that only become apparent when looking at the project as a whole (e.g., "The combined ESP of AHU-1 branch 'A' exceeds its rated capacity despite individual outlets being correct").
     6. PROJECT IDENTITY RECONCILIATION: Review all extracted project names and site addresses. Prioritize the address explicitly labeled "Site Address" or "Job Site." If multiple documents show different addresses, determine the actual physical project location.
-    7. EXECUTIVE SUMMARY: Update the summary to reflect a completed project-wide audit rather than single-file findings.
+    7. EXECUTIVE SUMMARY & OUTSIDE AIR AUDIT: Update the summary to reflect a completed project-wide audit rather than single-file findings. Ensure that all compiled Outside Air (OA) designs, requirements, and minimum outdoor air ventilation rates discovered across the batch of audited documents are explicitly summarized and integrated into the final Executive Summary 'overview' and 'keyFindings'.
 
     Merged Project Data (JSON):
     ${projectContext}

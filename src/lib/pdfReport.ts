@@ -105,6 +105,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   doc.setTextColor(35, 135, 166);
   doc.text("RELEASED FOR FIELD OPERATIONS", 195, 270, { align: 'right' });
 
+  // --- Page 2: Executive Summary Report & Outside Air Designs ---
   doc.addPage();
 
   // Header for standard pages (Keeping white background for printability, but dark accents)
@@ -112,6 +113,186 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   doc.setTextColor(150, 150, 150);
   doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
   const headerRight = `Audit: ${data.projectIdentity.projectName || 'Project'}${data.projectIdentity.siteAddress ? ` | ${data.projectIdentity.siteAddress}` : ''}`;
+  doc.text(headerRight, 196, 10, { align: 'right' });
+  doc.setDrawColor(230, 230, 230);
+  doc.line(14, 12, 196, 12);
+
+  // Section Title
+  doc.setFontSize(18);
+  doc.setTextColor(20, 20, 20);
+  doc.setFont("helvetica", "bold");
+  doc.text("Executive Summary Report", 14, 23);
+
+  // Draw Compliance Status Box
+  const status = data.executiveSummary?.complianceStatus || "Conditional";
+  let statusColor = [35, 135, 166]; // Teal default
+  if (status === "Compliant") statusColor = [16, 185, 129]; // Emerald
+  if (status === "Non-Compliant") statusColor = [239, 68, 68]; // Red
+  if (status === "Conditional") statusColor = [245, 158, 11]; // Amber
+
+  doc.setFillColor(248, 250, 252); // Very light slate background
+  doc.setDrawColor(226, 232, 240); // Slate 200 border
+  doc.setLineWidth(0.3);
+  doc.roundedRect(14, 28, 182, 38, 2, 2, 'FD');
+
+  // Accent colored bar on left of status box
+  doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
+  doc.rect(14, 28, 3, 38, 'F');
+
+  // Status text inside box
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139); // Slate 500
+  doc.setFont("helvetica", "normal");
+  doc.text("AUDIT COMPLIANCE STATUS", 22, 35);
+
+  doc.setFontSize(14);
+  doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+  doc.setFont("helvetica", "bold");
+  doc.text(status.toUpperCase(), 22, 42);
+
+  // Overview paragraph inside box
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85); // Slate 700
+  doc.setFont("helvetica", "normal");
+  const overviewText = data.executiveSummary?.overview || "Review of mechanical design files, equipment schedules and terminal layouts completed.";
+  const wrappedOverview = doc.splitTextToSize(overviewText, 165);
+  doc.text(wrappedOverview, 22, 49);
+
+  let currentY = 74;
+
+  // Sum up all outdoor air volumes
+  let totalOAFromSystems = 0;
+  if (data.globalAirBalance?.systems) {
+    totalOAFromSystems = data.globalAirBalance.systems.reduce((acc, sys) => acc + (sys.totalOutdoorAirVolume || 0), 0);
+  }
+  
+  // Also count total OA units
+  const totalOAUnits = (data.equipmentSchedules?.units || []).filter(u => (u.outdoorAirCfm || 0) > 0);
+  
+  if (totalOAFromSystems > 0 || totalOAUnits.length > 0) {
+    doc.setFillColor(239, 246, 255); // Light blue background
+    doc.setDrawColor(191, 219, 254); // Blue 200 border
+    doc.setLineWidth(0.2);
+    doc.roundedRect(14, currentY, 182, 26, 1.5, 1.5, 'FD');
+
+    // Colored bar
+    doc.setFillColor(37, 99, 235); // Blue 600
+    doc.rect(14, currentY, 3, 26, 'F');
+
+    // Section title inside box
+    doc.setFontSize(9);
+    doc.setTextColor(29, 78, 216); // Blue 700
+    doc.setFont("helvetica", "bold");
+    doc.text("OUTDOOR VENTILATION & OUTSIDE AIR (OA) DESIGNS", 22, currentY + 6);
+
+    // Context details inside box
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59); // Slate 800
+    doc.setFont("helvetica", "normal");
+    
+    let oaDetailString = "";
+    if (totalOAFromSystems > 0) {
+      oaDetailString += `Consolidated Outdoor Air Design Volume: ${totalOAFromSystems.toLocaleString()} ${unitLabel}. `;
+    }
+    if (totalOAUnits.length > 0) {
+      const unitTags = totalOAUnits.map(u => `${u.tag} (${u.outdoorAirCfm || 0} ${unitLabel})`).join(', ');
+      oaDetailString += `Active Outside Air Intake Units: ${unitTags}.`;
+    } else {
+      oaDetailString += `Minimum outside air volume constraints analyzed.`;
+    }
+    
+    const wrappedOADetails = doc.splitTextToSize(oaDetailString, 165);
+    doc.text(wrappedOADetails, 22, currentY + 12);
+    currentY += 34; // Advance Y past the OA card
+  }
+
+  // Key Technical Findings Section
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59); // Slate 800
+  doc.setFont("helvetica", "bold");
+  doc.text("Key Technical Findings", 14, currentY);
+  currentY += 6;
+
+  const keyFindings = data.executiveSummary?.keyFindings || [];
+  if (keyFindings.length === 0) {
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "normal");
+    doc.text("- No major technical findings listed.", 14, currentY);
+    currentY += 5;
+  } else {
+    keyFindings.forEach((finding) => {
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      doc.setFont("helvetica", "normal");
+      const wrappedFinding = doc.splitTextToSize(`• ${finding}`, 180);
+      wrappedFinding.forEach((line: string) => {
+        if (currentY > 275) {
+          doc.addPage();
+          // Header on transition page
+          doc.setFontSize(8);
+          doc.setTextColor(150, 150, 150);
+          doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
+          doc.text(headerRight, 196, 10, { align: 'right' });
+          doc.setDrawColor(230, 230, 230);
+          doc.line(14, 12, 196, 12);
+          currentY = 25;
+        }
+        doc.text(line, 14, currentY);
+        currentY += 4.5;
+      });
+      currentY += 1.5; // space between findings
+    });
+  }
+
+  currentY += 4;
+
+  // Major Red Flags / Concerns Section
+  doc.setFontSize(11);
+  doc.setTextColor(220, 38, 38); // Red-600
+  doc.setFont("helvetica", "bold");
+  doc.text("Critical Red Flags & Warnings", 14, currentY);
+  currentY += 6;
+
+  const majorRedFlags = data.executiveSummary?.majorRedFlags || [];
+  if (majorRedFlags.length === 0) {
+    doc.setFontSize(8.5);
+    doc.setTextColor(16, 185, 129); // Emerald-600
+    doc.setFont("helvetica", "normal");
+    doc.text("✔ No critical red flags or capacity overloads identified.", 14, currentY);
+    currentY += 5;
+  } else {
+    majorRedFlags.forEach((flag) => {
+      doc.setFontSize(8.5);
+      doc.setTextColor(185, 28, 28); // Red-700
+      doc.setFont("helvetica", "normal");
+      const wrappedFlag = doc.splitTextToSize(`⚠️ ${flag}`, 180);
+      wrappedFlag.forEach((line: string) => {
+        if (currentY > 275) {
+          doc.addPage();
+          // Header on transition page
+          doc.setFontSize(8);
+          doc.setTextColor(150, 150, 150);
+          doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
+          doc.text(headerRight, 196, 10, { align: 'right' });
+          doc.setDrawColor(230, 230, 230);
+          doc.line(14, 12, 196, 12);
+          currentY = 25;
+        }
+        doc.text(line, 14, currentY);
+        currentY += 4.5;
+      });
+      currentY += 1.5; // space between flags
+    });
+  }
+
+  // --- Add a page break and draw standard header for Section 0 ---
+  doc.addPage();
+
+  // Draw header for the new page
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
   doc.text(headerRight, 196, 10, { align: 'right' });
   doc.setDrawColor(230, 230, 230);
   doc.line(14, 12, 196, 12);
