@@ -8,6 +8,7 @@ import { motion } from "motion/react";
 import { CheckCircle2, ChevronRight, DraftingCompass, MapPin, Ruler, Wind, FileText, Download, AlertCircle, Wrench, Zap, Clock, ScanText, Search, Send, HelpCircle, Loader2 } from "lucide-react";
 import { AirBalanceData } from "../types";
 import { generateAirBalanceReport } from "../lib/pdfReport";
+import { generateExcelReport } from "../lib/excelReport";
 import { ExecutiveSummary } from "./ExecutiveSummary";
 import { cn } from "../lib/utils";
 import { queryPDFReport } from "../lib/gemini";
@@ -91,8 +92,15 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
     <div className="space-y-12 animate-in fade-in duration-700">
       <div className="flex justify-end gap-4">
         <button
+          onClick={() => generateExcelReport(data, sourceFileName)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-zinc-900 text-zinc-100 hover:bg-zinc-800 border border-white/10 rounded-sm text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg active:scale-95 cursor-pointer"
+        >
+          <FileText className="w-3.5 h-3.5 text-emerald-500" />
+          Export to Excel
+        </button>
+        <button
           onClick={() => generateAirBalanceReport(data, sourceFileName)}
-          className="flex items-center gap-2 px-6 py-2.5 bg-white text-[#141414] rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-lg active:scale-95"
+          className="flex items-center gap-2 px-6 py-2.5 bg-white text-[#141414] rounded-sm text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all shadow-lg active:scale-95 cursor-pointer"
         >
           <Download className="w-3.5 h-3.5" />
           Export Technical Audit
@@ -476,6 +484,125 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                 </div>
               </div>
             </div>
+
+            {/* Water / Hydronic Balancing Specifications */}
+            {data.hydronicSpecs && (
+              <div className="pt-8 border-t border-white/5 space-y-6">
+                <div>
+                  <h4 className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#F5F5F4] flex items-center gap-2 mb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                    Water / Hydronic Balancing Specifications
+                  </h4>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Extracted mechanical specifications and requirements necessary for hydronic loop balanceability, preparation, and device calibration.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+                  <DataField label="Water Flow Tolerances" value={data.hydronicSpecs.waterTolerances} />
+                  <div className="space-y-1.5">
+                    <span className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Hydronic Loops Identified</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {data.hydronicSpecs.systemTypes && data.hydronicSpecs.systemTypes.length > 0 ? (
+                        data.hydronicSpecs.systemTypes.map((t, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 bg-blue-950/40 border border-blue-500/20 text-[9px] text-blue-300 rounded-sm font-mono">
+                            {t}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-zinc-500 text-xs italic">-</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Flow Control Devices Specified</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {data.hydronicSpecs.balancingValves && data.hydronicSpecs.balancingValves.length > 0 ? (
+                        data.hydronicSpecs.balancingValves.map((v, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 bg-purple-950/40 border border-purple-500/20 text-[9px] text-purple-300 rounded-sm font-mono">
+                            {v}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-zinc-500 text-xs italic">-</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className={cn(
+                    "p-3 border rounded-sm flex items-center justify-between text-xs",
+                    data.hydronicSpecs.flushingRequired ? "bg-emerald-500/10 border-emerald-500/20" : "bg-white/5 border-white/5 opacity-50"
+                  )}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={cn("w-1.5 h-1.5 rounded-full", data.hydronicSpecs.flushingRequired ? "bg-emerald-500 animate-pulse" : "bg-zinc-600")} />
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-300">Pre-TAB System Flushing & Chemicals</span>
+                    </div>
+                    <span className="text-[9px] font-mono text-zinc-500">{data.hydronicSpecs.flushingRequired ? "MANDATORY" : "NOT SPECIFIED"}</span>
+                  </div>
+
+                  <div className={cn(
+                    "p-3 border rounded-sm flex items-center justify-between text-xs",
+                    data.hydronicSpecs.bypassBalanceRequired ? "bg-cyan-500/10 border-cyan-500/20" : "bg-white/5 border-white/5 opacity-50"
+                  )}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={cn("w-1.5 h-1.5 rounded-full", data.hydronicSpecs.bypassBalanceRequired ? "bg-cyan-500 animate-pulse" : "bg-zinc-600")} />
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-300">Bypass Loop Balancing Requirement</span>
+                    </div>
+                    <span className="text-[9px] font-mono text-zinc-500">{data.hydronicSpecs.bypassBalanceRequired ? "MANDATORY" : "NOT SPECIFIED"}</span>
+                  </div>
+                </div>
+
+                {data.hydronicSpecs.pumpDetails && data.hydronicSpecs.pumpDetails.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Extracted Pump Design Schedules</span>
+                    <div className="border border-white/5 rounded-sm p-1 bg-black/40 overflow-hidden">
+                      <table className="w-full text-left text-[10px]">
+                        <thead>
+                          <tr className="text-zinc-500 uppercase text-[8px] tracking-wider border-b border-white/5">
+                            <th className="p-2 font-bold">Pump Tag</th>
+                            <th className="p-2 font-bold text-right">Design Flow (GPM)</th>
+                            <th className="p-2 font-bold text-right">Head (Feet)</th>
+                            <th className="p-2 font-bold text-right">Motor Size (HP)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.03]">
+                          {data.hydronicSpecs.pumpDetails.map((pump, pIdx) => (
+                            <tr key={pIdx} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="p-2 font-mono text-zinc-300 uppercase font-bold">{pump.tag}</td>
+                              <td className="p-2 text-right font-mono text-zinc-200">{pump.designGpm ? `${pump.designGpm.toLocaleString()} GPM` : '-'}</td>
+                              <td className="p-2 text-right font-mono text-zinc-400">{pump.headFeet ? `${pump.headFeet} ft` : '-'}</td>
+                              <td className="p-2 text-right font-mono text-zinc-400">{pump.motorHp || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {data.hydronicSpecs.instruments && data.hydronicSpecs.instruments.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="block text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Required Hydronic Instruments</span>
+                    <div className="flex flex-wrap gap-2">
+                      {data.hydronicSpecs.instruments.map((inst, iIdx) => (
+                        <span key={iIdx} className="px-2 py-1 bg-blue-950/35 border border-blue-500/10 text-[9px] text-blue-300/90 rounded-sm font-mono">
+                          {inst}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {data.hydronicSpecs.auditNotes && (
+                  <div className="p-4 bg-blue-950/10 border border-blue-900/20 rounded-sm">
+                    <p className="text-[9px] uppercase font-bold tracking-[0.2em] text-blue-400 mb-2">Hydronic Audit Special Notes</p>
+                    <p className="text-xs text-zinc-400 leading-relaxed italic">"{data.hydronicSpecs.auditNotes}"</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -597,6 +724,153 @@ export function Dashboard({ data, sourceFileName, onUpdateData, fileCount, hideA
                     </div>
                  </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 4b. Unit Design Profiles */}
+        <div className="grid grid-cols-1 md:grid-cols-4 py-8 items-start border-b border-white/5">
+          <div className="col-span-1 col-start-1">
+            <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-zinc-500 mb-4 md:mb-0">04b. Unit Design Profiles</h3>
+          </div>
+          <div className="col-span-3 col-start-2">
+            <div className="space-y-6">
+              <div className="text-zinc-400 text-xs mb-4">
+                Meticulous extraction of equipment design parameters from schedules, submittals, and drawings. Below are the design specifications compared side-by-side with field verification entry slots.
+              </div>
+
+              {(() => {
+                // Group units by type
+                const grouped: { [key: string]: typeof data.equipmentSchedules.units } = {};
+                (data.equipmentSchedules?.units || []).forEach(unit => {
+                  const type = unit.type || "Other";
+                  if (!grouped[type]) {
+                    grouped[type] = [];
+                  }
+                  grouped[type].push(unit);
+                });
+
+                const types = Object.keys(grouped);
+                if (types.length === 0) {
+                  return (
+                    <div className="p-6 bg-white/[0.01] border border-dashed border-white/5 rounded-sm text-center text-zinc-500 text-xs">
+                      No mechanical unit profiles identified.
+                    </div>
+                  );
+                }
+
+                return types.map(type => (
+                  <div key={type} className="space-y-4">
+                    <h4 className="text-xs uppercase font-bold tracking-wider text-zinc-300 border-l border-emerald-500 pl-2">
+                      Unit Type: {type.toUpperCase()}
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 gap-6">
+                      {grouped[type].map(unit => {
+                        // Gather non-empty/non-zero parameters to display
+                        const paramsList = [
+                          { label: `Supply Airflow`, design: unit.airflowSupply || unit.designCfm, unit: isMetric ? 'L/s' : 'CFM' },
+                          { label: `Return Airflow`, design: unit.airflowReturn, unit: isMetric ? 'L/s' : 'CFM' },
+                          { label: `Outside Airflow`, design: unit.airflowOutsideAir || unit.outdoorAirCfm, unit: isMetric ? 'L/s' : 'CFM' },
+                          { label: `Exhaust Airflow`, design: unit.airflowExhaust, unit: isMetric ? 'L/s' : 'CFM' },
+                          { label: `External Static Pressure (ESP)`, design: unit.esp || unit.staticPressure, isString: true },
+                          { label: `Total Static Pressure (TSP)`, design: unit.tsp, isString: true },
+                          { label: `Total Cooling Capacity`, design: unit.coolingTotalMbh, unit: 'MBH' },
+                          { label: `Sensible Cooling Capacity`, design: unit.coolingSensibleMbh, unit: 'MBH' },
+                          { label: `Heating Capacity`, design: unit.heatingMbh, unit: 'MBH' },
+                          { label: `Entering Air Temperature`, design: unit.enteringAirTemp, isString: true },
+                          { label: `Leaving Air Temperature`, design: unit.leavingAirTemp, isString: true },
+                          { label: `Voltage & Phase`, design: unit.voltagePhase, isString: true },
+                          { label: `Motor Power`, design: unit.motorHp, isString: true },
+                          { label: `Motor Speed`, design: unit.motorRpm, isString: true },
+                        ].filter(p => p.design !== undefined && p.design !== "" && p.design !== 0);
+
+                        if (paramsList.length === 0) {
+                          paramsList.push({ label: `Airflow Rate`, design: unit.designCfm, unit: isMetric ? 'L/s' : 'CFM' });
+                        }
+
+                        return (
+                          <div key={unit.tag} className="bg-white/[0.02] border border-white/5 rounded-sm p-5 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/[0.03]">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-mono font-bold text-zinc-100 uppercase">{unit.tag}</span>
+                                <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-sm bg-zinc-800 text-zinc-400 border border-white/5">{unit.type}</span>
+                              </div>
+                              {unit.visualJustification && (
+                                <span className="text-[10px] text-zinc-500 italic">REF: {unit.visualJustification}</span>
+                              )}
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-xs">
+                                <thead>
+                                  <tr className="text-[9px] uppercase tracking-wider text-zinc-500 border-b border-white/[0.03]">
+                                    <th className="py-2 font-medium">Design Parameter</th>
+                                    <th className="py-2 font-medium text-right pr-4">Specified Design</th>
+                                    <th className="py-2 font-medium pl-4">Actual / Field Measured</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/[0.02]">
+                                  {paramsList.map((p, pidx) => (
+                                    <tr key={pidx} className="hover:bg-white/[0.01]">
+                                      <td className="py-2 text-zinc-400 font-medium">{p.label}</td>
+                                      <td className="py-2 text-right pr-4 font-mono text-zinc-200 font-bold">
+                                        {p.isString ? (p.design || '-') : `${p.design?.toLocaleString()} ${p.unit || ''}`}
+                                      </td>
+                                      <td className="py-2 pl-4">
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="text"
+                                            placeholder="Enter Field Value"
+                                            className="w-40 bg-zinc-950 border border-white/10 rounded-sm px-2.5 py-1 text-xs font-mono text-zinc-300 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                                          />
+                                          {!p.isString && (
+                                            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{p.unit}</span>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Traceability & Logic Log */}
+                            {(unit.sourceLocation || unit.mathConversionSteps || unit.engineeringAssumptions) && (
+                              <div className="mt-4 pt-4 border-t border-white/[0.04] bg-black/20 p-3.5 rounded-sm space-y-3">
+                                <div className="flex items-center gap-1.5 text-[9px] uppercase font-bold tracking-wider text-teal-400">
+                                  <FileText className="w-3.5 h-3.5" />
+                                  Traceability & Logic Log (Engineering Reasoning)
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                                  {unit.sourceLocation && (
+                                    <div className="space-y-1">
+                                      <span className="block text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Source Location</span>
+                                      <span className="text-zinc-300 block font-sans leading-relaxed">{unit.sourceLocation}</span>
+                                    </div>
+                                  )}
+                                  {unit.mathConversionSteps && (
+                                    <div className="space-y-1">
+                                      <span className="block text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Math / Conversion Steps</span>
+                                      <span className="text-zinc-300 block font-sans leading-relaxed">{unit.mathConversionSteps}</span>
+                                    </div>
+                                  )}
+                                  {unit.engineeringAssumptions && (
+                                    <div className="space-y-1">
+                                      <span className="block text-[8px] uppercase tracking-wider text-zinc-500 font-bold">Engineering Assumptions</span>
+                                      <span className="text-zinc-300 block font-sans leading-relaxed">{unit.engineeringAssumptions}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         </div>

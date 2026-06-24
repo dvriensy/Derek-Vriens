@@ -77,6 +77,23 @@ export const AIR_BALANCE_SCHEMA = {
               notes: { type: Type.STRING },
               outletMathString: { type: Type.STRING, description: "Explicit math string for outlets, e.g., '75 + 50 + 50 = 175'" },
               visualJustification: { type: Type.STRING, description: "Description of where this unit was found (e.g., 'Sheet M-101, Schedule 1')" },
+              airflowSupply: { type: Type.NUMBER, description: "Extracted Supply Air airflow capacity (CFM or L/s)" },
+              airflowReturn: { type: Type.NUMBER, description: "Extracted Return Air airflow capacity (CFM or L/s)" },
+              airflowExhaust: { type: Type.NUMBER, description: "Extracted Exhaust Air airflow capacity (CFM or L/s)" },
+              airflowOutsideAir: { type: Type.NUMBER, description: "Extracted Outside Air airflow capacity (CFM or L/s)" },
+              esp: { type: Type.STRING, description: "External Static Pressure, e.g. '0.5 in. w.g.'" },
+              tsp: { type: Type.STRING, description: "Total Static Pressure, e.g. '1.2 in. w.g.'" },
+              coolingTotalMbh: { type: Type.NUMBER, description: "Total Cooling Capacity in MBH" },
+              coolingSensibleMbh: { type: Type.NUMBER, description: "Sensible Cooling Capacity in MBH" },
+              heatingMbh: { type: Type.NUMBER, description: "Heating Capacity in MBH" },
+              enteringAirTemp: { type: Type.STRING, description: "Entering Air Temperature, e.g. '75 F / 62 F'" },
+              leavingAirTemp: { type: Type.STRING, description: "Leaving Air Temperature, e.g. '55 F / 53 F'" },
+              voltagePhase: { type: Type.STRING, description: "Electrical Voltage/Phase, e.g. '460V/3PH'" },
+              motorHp: { type: Type.STRING, description: "Motor Horsepower (HP), e.g. '3.0 HP'" },
+              motorRpm: { type: Type.STRING, description: "Motor RPM, e.g. '1725 RPM'" },
+              sourceLocation: { type: Type.STRING, description: "Exact sheet name, table, detail number, or plan view note where this unit was found" },
+              mathConversionSteps: { type: Type.STRING, description: "Any calculations or unit conversion steps performed (e.g. converting L/s to CFM, totaling sensible/latent heat for total MBH, etc.)" },
+              engineeringAssumptions: { type: Type.STRING, description: "Any engineering assumptions made if specifications were ambiguous, missing, or required industry defaults" },
               outlets: {
                 type: Type.ARRAY,
                 items: {
@@ -204,6 +221,31 @@ export const AIR_BALANCE_SCHEMA = {
         manufacturers: { type: Type.ARRAY, items: { type: Type.STRING } },
         hardwareNotes: { type: Type.STRING },
       },
+    },
+    hydronicSpecs: {
+      type: Type.OBJECT,
+      properties: {
+        waterTolerances: { type: Type.STRING, description: "Hydronic flow tolerances, e.g. '+/- 5%' or '+/- 10%'" },
+        systemTypes: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Types of water systems present (e.g. Chilled Water, Hot Water, Condenser Water)" },
+        balancingValves: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Types of balancing valves or flow limiters specified (e.g., Circuit Setters, PICVs)" },
+        pumpDetails: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              tag: { type: Type.STRING },
+              designGpm: { type: Type.NUMBER },
+              headFeet: { type: Type.NUMBER },
+              motorHp: { type: Type.STRING },
+            },
+            required: ["tag", "designGpm"]
+          }
+        },
+        instruments: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Hydronic balancing instrumentation required (e.g. Digital Differential Manometers, Ultrasonic Meter)" },
+        flushingRequired: { type: Type.BOOLEAN, description: "Whether system flushing and chemical treatment are mandated before balancing" },
+        bypassBalanceRequired: { type: Type.BOOLEAN, description: "Whether balancing of the bypass lines is explicitly required" },
+        auditNotes: { type: Type.STRING, description: "Important water balancing specification details, guidelines, or checklists" }
+      }
     },
     ocrInsight: { type: Type.STRING, description: "A technical summary of the 'DNA' of the document, including OCR confidence and key recurring patterns." },
     rawTextFeed: { type: Type.STRING, description: "A comprehensive extraction of all technical text, focusing on schedules, notes, and specification blocks." },
@@ -422,6 +464,26 @@ export async function analyzeAirBalancePDF(base64Data: string, retryCount = 0): 
     13. EXECUTIVE SUMMARY & OUTSIDE AIR DESIGN MANDATE: Generate a high-level summary for leadership highlighting the critical path forward, major project risks, overall drawing compliance, and outside air designs.
         - OUTSIDE AIR ACTIONS: You MUST actively scan the entire document/drawings for any outside air (OA) designs, minimum outdoor air volume requirements, outdoor vent ventilation rates, or OA schedules. 
         - SUMMARY INTEGRATION: Incorporate a clear, dedicated highlight of these outside air designs and ventilation rates under your Key Technical Findings and Executive Summary Overview. Ensure they are prominently identified.
+    14. COMPREHENSIVE UNIT DESIGN EXTRACTION, GAP WARNINGS, & TRACEABILITY LOGS (SHOW YOUR WORK):
+        - Scan all pages thoroughly for equipment schedules (RTUs, AHUs, FCUs, VAVs, EF, etc.) and extract the specified parameters for each unit: Airflow Capacity (Supply, Return, OA, Exhaust), Pressure Profiles (ESP, TSP), Thermal/Coil Capacities (Total/Sensible Cooling MBH, Heating MBH, Entering/Leaving Air Temperatures), and Electrical/Drive Data (Voltage/Phase, Motor HP, and Motor RPM).
+        - TRACEABILITY LOGS FOR EVERY UNIT: For every mechanical unit found, you MUST explicitly populate the following reasoning fields in the JSON response:
+            * 'sourceLocation': The exact sheet name, table title, detail number, or plan view note where this unit's data was extracted (e.g. "Sheet M-502, Rooftop Unit Schedule, Row 3").
+            * 'mathConversionSteps': Detailed math calculations or unit conversion steps performed. If no conversions were needed, explicitly state "No conversions required; design value of XXX taken directly from schedule." Otherwise, show formulas like "L/s converted to CFM: 50 L/s * 2.1189 = 105.9 CFM" or "Total Cooling MBH = Sensible (24 MBH) + Latent (6 MBH) = 30 MBH".
+            * 'engineeringAssumptions': Document any engineering assumptions made if a specification was ambiguous, missing, or required industry defaults (e.g., assuming a standard ESP of 0.5 in w.g. for FCU model if unlisted).
+        - CROSS-REFERENCE layout plans with schedules: Compare unit tags shown on floor layout drawing plans with those listed in schedules. If a unit tag is present on the floor layout plan but its corresponding design schedule row is missing, incomplete, or illegible, automatically generate a Critical Warning.
+        - EXPLICIT LOGIC DETAIL: In the discrepancy detail or key findings, detail the exact step in your cross-referencing logic that triggered the warning (e.g., "Unit EF-3 identified on Sheet M-102 layout plan, but no corresponding entry found in Exhaust Fan Schedule on Sheet M-501").
+        - You MUST format the warning clearly: "CRITICAL WARNING: Missing or incomplete design schedule data for Unit [Unit ID]." Include this exact warning in the 'executiveSummary.majorRedFlags' array and list it as a critical discrepancy.
+    15. COMPREHENSIVE SPECIFICATION SCAN (AIR & WATER BALANCING):
+        - If a specification document or Section 23 05 93 / TAB Specification is dropped or included:
+        - READ IT IN ITS ENTIRETY to extract all critical parameters required for both Air Balancing and Water/Hydronic Balancing.
+        - Extract water tolerances (e.g., +/- 10% on heating coils, +/- 5% on chillers/boilers), water/hydronic systems types, specified balancing valves (manual, automatic, or PICVs), and any pump/equipment data.
+        - Look for specified flow-measurement instruments (differential pressure gauges, ultrasonic flow meters), bypass balance requirements, and flushing/chemical treatment mandates before balancing.
+        - Integrate these crucial details into the 'hydronicSpecs' object. Ensure you distinguish between Air tolerances (+/- 5% or 10%) and Water tolerances clearly in keyFindings and overview!
+    16. SEQUENTIAL FILE & PAGE ANALYSIS (BATCH PROCESSING):
+        - When documents are processed sequentially page-by-page or chunk-by-chunk:
+        - ISOLATED EXTRACTION: Treat the current page/file segment as an isolated dataset. Extract all matching schedules, equipment layouts, or notes found *only* within this specific segment.
+        - CONTEXTUAL ANCHORING: Do not guess or assume data exists elsewhere. If a schedule row cuts off or continues onto another sheet, explicitly state: "Schedule continues on next sheet; tracking [Unit IDs] extracted so far" inside the notes or audit summary.
+        - INCREMENTAL DELTA MAPPING: Output the extracted JSON structure containing *only* the newly discovered equipment, parameters, or warnings found in this specific segment. This is critical for programmatic state merging on the master dashboard.
 
     TECHNICAL OCR & DOCUMENT DISCOVERY:
     - Perform a "Digital Scan" to extract all technical text from schedules, legends, and specification blocks.

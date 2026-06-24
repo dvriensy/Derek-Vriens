@@ -11,9 +11,12 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   const doc = new jsPDF({
     orientation: 'p',
     unit: 'mm',
-    format: 'a4',
+    format: 'letter',
     putOnlyUsedFonts: true // Optimize for lightweight readers
   });
+
+  const pageW = 215.9;
+  const pageH = 279.4;
 
   doc.setProperties({
     title: `TAB Audit - ${data.projectIdentity.projectName}`,
@@ -31,18 +34,18 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   // --- Title Page: "Architectural Precision" ---
   // Background
   doc.setFillColor(255, 255, 255); // White
-  doc.rect(0, 0, 210, 297, 'F');
+  doc.rect(0, 0, pageW, pageH, 'F');
 
   // Left Branding Sidebar
   doc.setFillColor(35, 135, 166); // Accu-Air Teal
-  doc.rect(0, 0, 15, 297, 'F');
+  doc.rect(0, 0, 15, pageH, 'F');
   
   // Subtle Background Accents (Grid corner)
   doc.setDrawColor(40, 40, 40);
   doc.setLineWidth(0.1);
   for(let i=0; i<40; i+=5) {
-    doc.line(200, 250+i, 210, 250+i); // Horizontal lines bottom right
-    doc.line(160+i, 290, 160+i, 297); // Vertical lines bottom right
+    doc.line(pageW - 10, pageH - 47 + i, pageW, pageH - 47 + i); // Horizontal lines bottom right
+    doc.line(pageW - 50 + i, pageH - 7, pageW - 50 + i, pageH); // Vertical lines bottom right
   }
 
   // Company Name - Top Left
@@ -227,7 +230,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       doc.setFont("helvetica", "normal");
       const wrappedFinding = doc.splitTextToSize(`• ${finding}`, 180);
       wrappedFinding.forEach((line: string) => {
-        if (currentY > 275) {
+        if (currentY > 255) {
           doc.addPage();
           // Header on transition page
           doc.setFontSize(8);
@@ -268,7 +271,7 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       doc.setFont("helvetica", "normal");
       const wrappedFlag = doc.splitTextToSize(`⚠️ ${flag}`, 180);
       wrappedFlag.forEach((line: string) => {
-        if (currentY > 275) {
+        if (currentY > 255) {
           doc.addPage();
           // Header on transition page
           doc.setFontSize(8);
@@ -411,6 +414,45 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 0: { fontStyle: 'bold', fillColor: [250, 250, 250], textColor: [80, 80, 80], cellWidth: 40 } }
   });
 
+  // 3b. Water / Hydronic Specifications
+  if (data.hydronicSpecs) {
+    const finalYSpec = (doc as any).lastAutoTable.finalY || 100;
+    if (finalYSpec > 200) {
+      doc.addPage();
+    }
+    
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text("3b. Water / Hydronic Balancing Specifications", 14, (doc as any).lastAutoTable.finalY ? (doc as any).lastAutoTable.finalY + 12 : 30);
+    
+    const hydronicRows: any[][] = [
+      ["Water Tolerances", data.hydronicSpecs.waterTolerances || "-"],
+      ["System Loops Identified", data.hydronicSpecs.systemTypes?.join(", ") || "-"],
+      ["Balancing Valves Specified", data.hydronicSpecs.balancingValves?.join(", ") || "-"],
+      ["System Flushing Mandated", data.hydronicSpecs.flushingRequired ? "YES (MANDATORY)" : "NOT SPECIFIED"],
+      ["Bypass Loop Balancing", data.hydronicSpecs.bypassBalanceRequired ? "YES (MANDATORY)" : "NOT SPECIFIED"],
+      ["Required Instruments", data.hydronicSpecs.instruments?.join(", ") || "-"],
+    ];
+
+    if (data.hydronicSpecs.pumpDetails && data.hydronicSpecs.pumpDetails.length > 0) {
+      const pumpStrs = data.hydronicSpecs.pumpDetails.map(p => `${p.tag}: ${p.designGpm || 0} GPM ${p.headFeet ? `(${p.headFeet} ft head)` : ''} ${p.motorHp ? `[${p.motorHp}]` : ''}`);
+      hydronicRows.push(["Pump Design Schedule", pumpStrs.join("; ")]);
+    }
+
+    if (data.hydronicSpecs.auditNotes) {
+      hydronicRows.push(["Hydronic Special Notes", data.hydronicSpecs.auditNotes]);
+    }
+
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY ? (doc as any).lastAutoTable.finalY + 15 : 35,
+      body: hydronicRows,
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 2, font: 'helvetica' },
+      columnStyles: { 0: { fontStyle: 'bold', fillColor: [240, 246, 252], textColor: [40, 60, 100], cellWidth: 50 } }
+    });
+  }
+
   // 4. Equipment Schedule
   doc.addPage();
   doc.setFontSize(14);
@@ -456,10 +498,193 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 0: { fontStyle: 'bold', fillColor: [250, 250, 250], textColor: [80, 80, 80], cellWidth: 50 } }
   });
 
+  // --- Page: Unit Design Profiles (Section 4b) ---
+  doc.addPage();
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(20, 20, 20);
+  doc.text("4b. Unit Design Profiles & Comparison Sheets", 14, 20);
+  
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text("Meticulous design parameters paired with placeholder fields for 'Actual / Field Measured' values.", 14, 25);
+
+  let currentY4b = 32;
+
+  // Group units by type
+  const unitsGrouped: { [key: string]: typeof data.equipmentSchedules.units } = {};
+  (data.equipmentSchedules?.units || []).forEach(unit => {
+    const type = unit.type || "Other";
+    if (!unitsGrouped[type]) {
+      unitsGrouped[type] = [];
+    }
+    unitsGrouped[type].push(unit);
+  });
+
+  const uTypes = Object.keys(unitsGrouped);
+  if (uTypes.length === 0) {
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text("No unit design specifications found.", 14, currentY4b + 10);
+  } else {
+    uTypes.forEach((type) => {
+      // Check if we need a page break
+      if (currentY4b > 220) {
+        doc.addPage();
+        currentY4b = 20;
+      }
+      
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Unit Type: ${type.toUpperCase()}`, 14, currentY4b);
+      currentY4b += 6;
+
+      const unitsInType = unitsGrouped[type];
+      unitsInType.forEach((unit) => {
+        // Build table rows for this unit's parameters
+        const rows: any[][] = [];
+        
+        // Airflow rates
+        if (unit.airflowSupply !== undefined || unit.designCfm) {
+          rows.push(["Supply Airflow Rate", `${(unit.airflowSupply || unit.designCfm || 0).toLocaleString()} ${unitLabel}`, "___________________"]);
+        }
+        if (unit.airflowReturn !== undefined && unit.airflowReturn > 0) {
+          rows.push(["Return Airflow Rate", `${unit.airflowReturn.toLocaleString()} ${unitLabel}`, "___________________"]);
+        }
+        if (unit.airflowOutsideAir !== undefined || unit.outdoorAirCfm) {
+          const oaVal = unit.airflowOutsideAir || unit.outdoorAirCfm || 0;
+          if (oaVal > 0) {
+            rows.push(["Outside Airflow Rate", `${oaVal.toLocaleString()} ${unitLabel}`, "___________________"]);
+          }
+        }
+        if (unit.airflowExhaust !== undefined && unit.airflowExhaust > 0) {
+          rows.push(["Exhaust Airflow Rate", `${unit.airflowExhaust.toLocaleString()} ${unitLabel}`, "___________________"]);
+        }
+
+        // Pressure profiles
+        if (unit.esp !== undefined || unit.staticPressure) {
+          rows.push(["External Static Pressure (ESP)", unit.esp || unit.staticPressure || "-", "___________________"]);
+        }
+        if (unit.tsp !== undefined) {
+          rows.push(["Total Static Pressure (TSP)", unit.tsp || "-", "___________________"]);
+        }
+
+        // Thermal/Coil Capacities
+        if (unit.coolingTotalMbh !== undefined && unit.coolingTotalMbh > 0) {
+          rows.push(["Total Cooling Capacity", `${unit.coolingTotalMbh} MBH`, "___________________"]);
+        }
+        if (unit.coolingSensibleMbh !== undefined && unit.coolingSensibleMbh > 0) {
+          rows.push(["Sensible Cooling Capacity", `${unit.coolingSensibleMbh} MBH`, "___________________"]);
+        }
+        if (unit.heatingMbh !== undefined && unit.heatingMbh > 0) {
+          rows.push(["Heating Capacity", `${unit.heatingMbh} MBH`, "___________________"]);
+        }
+        if (unit.enteringAirTemp !== undefined && unit.enteringAirTemp !== "") {
+          rows.push(["Entering Air Temperature (EAT)", unit.enteringAirTemp || "-", "___________________"]);
+        }
+        if (unit.leavingAirTemp !== undefined && unit.leavingAirTemp !== "") {
+          rows.push(["Leaving Air Temperature (LAT)", unit.leavingAirTemp || "-", "___________________"]);
+        }
+
+        // Electrical/Drive data
+        if (unit.voltagePhase !== undefined && unit.voltagePhase !== "") {
+          rows.push(["Electrical Voltage / Phase", unit.voltagePhase || "-", "___________________"]);
+        }
+        if (unit.motorHp !== undefined && unit.motorHp !== "") {
+          rows.push(["Motor Horsepower (HP)", unit.motorHp || "-", "___________________"]);
+        }
+        if (unit.motorRpm !== undefined && unit.motorRpm !== "") {
+          rows.push(["Motor RPM / Fan Speed", unit.motorRpm || "-", "___________________"]);
+        }
+
+        if (rows.length === 0) {
+          rows.push(["Airflow Rate (Primary)", `${(unit.designCfm || 0).toLocaleString()} ${unitLabel}`, "___________________"]);
+        }
+
+        // Check page budget before writing table
+        if (currentY4b > 195) {
+          doc.addPage();
+          currentY4b = 20;
+        }
+
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(51, 65, 85);
+        doc.text(`Equipment Profile: ${unit.tag} ${unit.visualJustification ? `(Ref: ${unit.visualJustification})` : ''}`, 14, currentY4b);
+        currentY4b += 3;
+
+        autoTable(doc, {
+          startY: currentY4b,
+          head: [['Design Parameter', 'Specified Design Value', 'Actual / Field Measured']],
+          body: rows,
+          theme: 'grid',
+          headStyles: { fillColor: [71, 85, 105], font: 'helvetica', fontSize: 8 },
+          styles: { fontSize: 8, font: 'helvetica', cellPadding: 2 },
+          columnStyles: { 
+            0: { fontStyle: 'bold', cellWidth: 70 },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 62 }
+          }
+        });
+
+        currentY4b = (doc as any).lastAutoTable.finalY + 4;
+
+        // Draw the Traceability Log if available
+        if (unit.sourceLocation || unit.mathConversionSteps || unit.engineeringAssumptions) {
+          if (currentY4b > 220) {
+            doc.addPage();
+            currentY4b = 20;
+          }
+          
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(13, 148, 136); // Teal color
+          doc.text("Engineering Traceability & Reasoning Log:", 14, currentY4b);
+          currentY4b += 4;
+          
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(71, 85, 105);
+          
+          const traceLines: string[] = [];
+          if (unit.sourceLocation) {
+            traceLines.push(`• Source Location: ${unit.sourceLocation}`);
+          }
+          if (unit.mathConversionSteps) {
+            traceLines.push(`• Math/Conversion Steps: ${unit.mathConversionSteps}`);
+          }
+          if (unit.engineeringAssumptions) {
+            traceLines.push(`• Engineering Assumptions: ${unit.engineeringAssumptions}`);
+          }
+          
+          traceLines.forEach((line) => {
+            const splitLines = doc.splitTextToSize(line, 180);
+            splitLines.forEach((splitLine: string) => {
+              if (currentY4b > 255) {
+                doc.addPage();
+                currentY4b = 20;
+              }
+              doc.text(splitLine, 14, currentY4b);
+              currentY4b += 4;
+            });
+          });
+          currentY4b += 4; // space after the log section
+        } else {
+          currentY4b += 4; // standard space
+        }
+      });
+    });
+  }
+
   // 5. Shop Drawings
-  doc.text("5. Shop Drawings / Submittals", 14, (doc as any).lastAutoTable.finalY + 15);
+  doc.addPage();
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(20, 20, 20);
+  doc.text("5. Shop Drawings / Submittals", 14, 20);
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 18,
+    startY: 25,
     body: [
       ["Design Match", data.shopDrawings?.confirmsDesign ? "YES" : "NO"],
       ["Cross-Ref", data.shopDrawings?.crossRefDetails || "-"],

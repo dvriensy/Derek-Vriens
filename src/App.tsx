@@ -310,6 +310,28 @@ export default function App() {
         toolsRequired: Array.from(new Set([...(existing.logistics?.toolsRequired || []), ...(newData.logistics?.toolsRequired || [])])),
         criticalPaths: Array.from(new Set([...(existing.logistics?.criticalPaths || []), ...(newData.logistics?.criticalPaths || [])])),
       },
+      hydronicSpecs: (() => {
+        const hExist = existing.hydronicSpecs || {};
+        const hNew = newData.hydronicSpecs || {};
+        return {
+          waterTolerances: hNew.waterTolerances || hExist.waterTolerances,
+          systemTypes: Array.from(new Set([...(hExist.systemTypes || []), ...(hNew.systemTypes || [])])),
+          balancingValves: Array.from(new Set([...(hExist.balancingValves || []), ...(hNew.balancingValves || [])])),
+          pumpDetails: (() => {
+            const mergedPumps = [...(hExist.pumpDetails || [])];
+            (hNew.pumpDetails || []).forEach(newPump => {
+              if (!mergedPumps.some(p => p.tag === newPump.tag)) {
+                mergedPumps.push(newPump);
+              }
+            });
+            return mergedPumps;
+          })(),
+          instruments: Array.from(new Set([...(hExist.instruments || []), ...(hNew.instruments || [])])),
+          flushingRequired: hNew.flushingRequired ?? hExist.flushingRequired,
+          bypassBalanceRequired: hNew.bypassBalanceRequired ?? hExist.bypassBalanceRequired,
+          auditNotes: hNew.auditNotes || hExist.auditNotes
+        };
+      })(),
       designReconciliation: newData.designReconciliation || existing.designReconciliation
     };
   };

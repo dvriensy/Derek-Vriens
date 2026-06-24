@@ -89,6 +89,7 @@ export interface AirBalanceData {
     manufacturers?: string[];
     hardwareNotes?: string;
   };
+  hydronicSpecs?: HydronicSpecs;
   ocrInsight?: string; // High-level technical discovery of the document
   rawTextFeed?: string; // Raw text transcript extracted from the PDF
   executiveSummary?: ExecutiveSummary;
@@ -152,6 +153,26 @@ export interface TABEquipment {
   outletMathString?: string; // e.g. "100 + 100 + 200 = 400"
   outlets?: TABOutlet[];
   visualJustification?: string;
+
+  // Comprehensive Unit Design Extraction fields
+  airflowSupply?: number;
+  airflowReturn?: number;
+  airflowExhaust?: number;
+  airflowOutsideAir?: number;
+  esp?: string; // External Static Pressure, e.g., "0.5 in. w.g."
+  tsp?: string; // Total Static Pressure, e.g., "1.2 in. w.g."
+  coolingTotalMbh?: number;
+  coolingSensibleMbh?: number;
+  heatingMbh?: number;
+  enteringAirTemp?: string; // e.g., "75 F" or "24 C"
+  leavingAirTemp?: string;  // e.g., "55 F" or "13 C"
+  voltagePhase?: string;    // e.g., "460V/3PH"
+  motorHp?: string;         // e.g., "5.0 HP"
+  motorRpm?: string;        // e.g., "1725 RPM"
+  // Engineering Traceability & Logic Log
+  sourceLocation?: string;        // Exact sheet name/detail/plan note
+  mathConversionSteps?: string;   // Math derivations, e.g. conversions or totals
+  engineeringAssumptions?: string;// Ambiguity resolutions or defaults
 }
 
 export interface TABOutlet {
@@ -162,6 +183,22 @@ export interface TABOutlet {
   ductSize: string;     // e.g. 8"Ø, 12x10
   designVolume: number;
   visualJustification?: string;
+}
+
+export interface HydronicSpecs {
+  waterTolerances?: string; // e.g. "+/- 5%" or "+/- 10%"
+  systemTypes?: string[];   // e.g. ["Heating Hot Water", "Chilled Water"]
+  balancingValves?: string[]; // e.g. ["Circuit Setters", "PICVs"]
+  pumpDetails?: {
+    tag: string;
+    designGpm: number;
+    headFeet?: number;
+    motorHp?: string;
+  }[];
+  instruments?: string[]; // e.g. ["Differential Pressure Gauges"]
+  flushingRequired?: boolean;
+  bypassBalanceRequired?: boolean;
+  auditNotes?: string;
 }
 
 export type ExtractionStatus = 'idle' | 'loading' | 'success' | 'error';
