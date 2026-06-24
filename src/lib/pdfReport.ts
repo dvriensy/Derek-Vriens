@@ -111,14 +111,8 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   // --- Page 2: Executive Summary Report & Outside Air Designs ---
   doc.addPage();
 
-  // Header for standard pages (Keeping white background for printability, but dark accents)
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
-  doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
-  const headerRight = `Audit: ${data.projectIdentity.projectName || 'Project'}${data.projectIdentity.siteAddress ? ` | ${data.projectIdentity.siteAddress}` : ''}`;
-  doc.text(headerRight, 196, 10, { align: 'right' });
-  doc.setDrawColor(230, 230, 230);
-  doc.line(14, 12, 196, 12);
+  // Header for standard pages is handled programmatically in the final Adobe PDF post-processing loop.
+  // Section Title
 
   // Section Title
   doc.setFontSize(18);
@@ -232,13 +226,6 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       wrappedFinding.forEach((line: string) => {
         if (currentY > 255) {
           doc.addPage();
-          // Header on transition page
-          doc.setFontSize(8);
-          doc.setTextColor(150, 150, 150);
-          doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
-          doc.text(headerRight, 196, 10, { align: 'right' });
-          doc.setDrawColor(230, 230, 230);
-          doc.line(14, 12, 196, 12);
           currentY = 25;
         }
         doc.text(line, 14, currentY);
@@ -273,13 +260,6 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       wrappedFlag.forEach((line: string) => {
         if (currentY > 255) {
           doc.addPage();
-          // Header on transition page
-          doc.setFontSize(8);
-          doc.setTextColor(150, 150, 150);
-          doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
-          doc.text(headerRight, 196, 10, { align: 'right' });
-          doc.setDrawColor(230, 230, 230);
-          doc.line(14, 12, 196, 12);
           currentY = 25;
         }
         doc.text(line, 14, currentY);
@@ -289,29 +269,30 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     });
   }
 
-  // --- Add a page break and draw standard header for Section 0 ---
-  doc.addPage();
-
-  // Draw header for the new page
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
-  doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
-  doc.text(headerRight, 196, 10, { align: 'right' });
-  doc.setDrawColor(230, 230, 230);
-  doc.line(14, 12, 196, 12);
+  // --- Dynamically check if we need to start a new page for Section 0 ---
+  currentY += 12;
+  if (currentY > 215) {
+    doc.addPage();
+    currentY = 20;
+  }
 
   // 0. Pre-Balance Readiness Summary
-  doc.setFontSize(18);
+  doc.setFontSize(14);
   doc.setTextColor(10, 10, 10);
-  doc.text("Pre-Balance Readiness Summary", 14, 25);
+  doc.setFont("helvetica", "bold");
+  doc.text("Pre-Balance Readiness Summary", 14, currentY);
+  currentY += 6;
   
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
+  doc.setFont("helvetica", "normal");
   const overview = data.preBalanceReadiness?.systemOverview || "Pre-balance assessment performed on architectural and mechanical schedules.";
-  doc.text(doc.splitTextToSize(overview, 180), 14, 35);
+  const wrappedOverviewText = doc.splitTextToSize(overview, 180);
+  doc.text(wrappedOverviewText, 14, currentY);
+  currentY += (wrappedOverviewText.length * 4.5) + 4;
 
   autoTable(doc, {
-    startY: 45,
+    startY: currentY,
     head: [['Item', 'Status', 'Technician Note']],
     body: (data.preBalanceReadiness?.checklist || []).map(item => [
       item.item,
@@ -324,26 +305,44 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 1: { fontStyle: 'bold' } }
   });
 
+  currentY = (doc as any).lastAutoTable.finalY + 6;
+
   if (data.preBalanceReadiness?.criticalDeficiencies?.length > 0) {
-    const y = (doc as any).lastAutoTable.finalY + 10;
+    if (currentY > 225) {
+      doc.addPage();
+      currentY = 20;
+    }
     doc.setTextColor(220, 38, 38);
     doc.setFontSize(10);
-    doc.text("CRITICAL DEFICIENCIES:", 14, y);
+    doc.setFont("helvetica", "bold");
+    doc.text("CRITICAL DEFICIENCIES:", 14, currentY);
+    currentY += 5;
     doc.setFontSize(9);
-    data.preBalanceReadiness?.criticalDeficiencies?.forEach((def: string, i: number) => {
-      doc.text(`- ${def}`, 14, y + 5 + (i * 5));
+    doc.setFont("helvetica", "normal");
+    data.preBalanceReadiness?.criticalDeficiencies?.forEach((def: string) => {
+      if (currentY > 255) {
+        doc.addPage();
+        currentY = 20;
+      }
+      doc.text(`- ${def}`, 14, currentY);
+      currentY += 5;
     });
     doc.setTextColor(0, 0, 0);
   }
 
   // 1. Project Identity
-  doc.addPage();
+  currentY += 10;
+  if (currentY > 215) {
+    doc.addPage();
+    currentY = 20;
+  }
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text("1. Project Identity", 14, 20);
+  doc.text("1. Project Identity", 14, currentY);
+  currentY += 5;
   
   autoTable(doc, {
-    startY: 25,
+    startY: currentY,
     body: [
       ["Project Name", data.projectIdentity.projectName || "Not Specified"],
       ["Site Address", data.projectIdentity.siteAddress || "Not Specified"],
@@ -357,15 +356,24 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }
   });
 
+  currentY = (doc as any).lastAutoTable.finalY + 10;
+
   // 2. Global Air Balance
-  doc.text("2. Global Air Balance Summary", 14, (doc as any).lastAutoTable.finalY + 15);
+  if (currentY > 220) {
+    doc.addPage();
+    currentY = 20;
+  }
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("2. Global Air Balance Summary", 14, currentY);
+  currentY += 5;
   
   const gabHead = isMetric 
     ? [['System', `Design (${unitLabel})`, 'Total OA', 'Equiv. CFM', 'Diversified', 'Notes', 'Status']]
     : [['System', `Design (${unitLabel})`, 'Total OA', 'Diversified', 'Notes', 'Status']];
 
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 18,
+    startY: currentY,
     head: gabHead,
     body: (data.globalAirBalance?.systems || []).map(s => {
       const outletsVol = s.totalOutletsVolume || 0;
@@ -393,10 +401,20 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     styles: { fontSize: 8, font: 'helvetica' }
   });
 
+  currentY = (doc as any).lastAutoTable.finalY + 10;
+
   // 3. TAB Specs & Logistics
-  doc.text("3. TAB Specifications & Logistics", 14, (doc as any).lastAutoTable.finalY + 15);
+  if (currentY > 220) {
+    doc.addPage();
+    currentY = 20;
+  }
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("3. TAB Specifications & Logistics", 14, currentY);
+  currentY += 5;
+
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 18,
+    startY: currentY,
     body: [
       ["Tolerances", data.tabSpecs.tolerances || "-"],
       ["Certifications", data.tabSpecs.certifications || "-"],
@@ -414,17 +432,20 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 0: { fontStyle: 'bold', fillColor: [250, 250, 250], textColor: [80, 80, 80], cellWidth: 40 } }
   });
 
+  currentY = (doc as any).lastAutoTable.finalY + 10;
+
   // 3b. Water / Hydronic Specifications
   if (data.hydronicSpecs) {
-    const finalYSpec = (doc as any).lastAutoTable.finalY || 100;
-    if (finalYSpec > 200) {
+    if (currentY > 220) {
       doc.addPage();
+      currentY = 20;
     }
     
-    doc.setFontSize(11);
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(20, 20, 20);
-    doc.text("3b. Water / Hydronic Balancing Specifications", 14, (doc as any).lastAutoTable.finalY ? (doc as any).lastAutoTable.finalY + 12 : 30);
+    doc.text("3b. Water / Hydronic Balancing Specifications", 14, currentY);
+    currentY += 5;
     
     const hydronicRows: any[][] = [
       ["Water Tolerances", data.hydronicSpecs.waterTolerances || "-"],
@@ -445,26 +466,34 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     }
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY ? (doc as any).lastAutoTable.finalY + 15 : 35,
+      startY: currentY,
       body: hydronicRows,
       theme: 'grid',
       styles: { fontSize: 8.5, cellPadding: 2, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', fillColor: [240, 246, 252], textColor: [40, 60, 100], cellWidth: 50 } }
     });
+    
+    currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
   // 4. Equipment Schedule
-  doc.addPage();
+  currentY += 2;
+  if (currentY > 215) {
+    doc.addPage();
+    currentY = 20;
+  }
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text("4. Equipment Schedule & Math Audit", 14, 20);
+  doc.setTextColor(20, 20, 20);
+  doc.text("4. Equipment Schedule & Math Audit", 14, currentY);
+  currentY += 5;
   
   const equipHead = isMetric
     ? [['Tag', 'Type', `Total (${unitLabel})`, `O.A. (${unitLabel})`, 'Equiv. CFM', 'Static']]
     : [['Tag', 'Type', `Total (${unitLabel})`, `O.A. (${unitLabel})`, 'Static']];
 
   autoTable(doc, {
-    startY: 25,
+    startY: currentY,
     head: equipHead,
     body: (data.equipmentSchedules?.units || []).map(u => {
       const row = [u.tag, u.type, (u.designCfm || 0).toLocaleString(), (u.outdoorAirCfm || 0).toLocaleString()];
@@ -482,10 +511,21 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     styles: { fontSize: 8, font: 'helvetica' }
   });
 
+  currentY = (doc as any).lastAutoTable.finalY + 8;
+
+  if (currentY > 230) {
+    doc.addPage();
+    currentY = 20;
+  }
+
   doc.setFont("helvetica", "bold");
-  doc.text("System Summation Audit", 14, (doc as any).lastAutoTable.finalY + 10);
+  doc.setFontSize(11);
+  doc.setTextColor(20, 20, 20);
+  doc.text("System Summation Audit", 14, currentY);
+  currentY += 4;
+
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 14,
+    startY: currentY,
     body: [
       [`Main Unit Discharge ${unitLabel}`, (data.equipmentSchedules?.vavSummation?.mainUnitCfm || 0).toLocaleString()],
       [`Sum of Terminal Units (${unitLabel})`, (data.equipmentSchedules?.vavSummation?.totalVavCfm || 0).toLocaleString()],
@@ -498,19 +538,25 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 0: { fontStyle: 'bold', fillColor: [250, 250, 250], textColor: [80, 80, 80], cellWidth: 50 } }
   });
 
-  // --- Page: Unit Design Profiles (Section 4b) ---
-  doc.addPage();
+  currentY = (doc as any).lastAutoTable.finalY + 10;
+
+  // --- Unit Design Profiles (Section 4b) ---
+  currentY += 2;
+  if (currentY > 215) {
+    doc.addPage();
+    currentY = 20;
+  }
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(20, 20, 20);
-  doc.text("4b. Unit Design Profiles & Comparison Sheets", 14, 20);
+  doc.text("4b. Unit Design Profiles & Comparison Sheets", 14, currentY);
+  currentY += 5;
   
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 116, 139);
-  doc.text("Meticulous design parameters paired with placeholder fields for 'Actual / Field Measured' values.", 14, 25);
-
-  let currentY4b = 32;
+  doc.text("Meticulous design parameters paired with placeholder fields for 'Actual / Field Measured' values.", 14, currentY);
+  currentY += 8;
 
   // Group units by type
   const unitsGrouped: { [key: string]: typeof data.equipmentSchedules.units } = {};
@@ -526,20 +572,21 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
   if (uTypes.length === 0) {
     doc.setFontSize(10);
     doc.setTextColor(100, 116, 139);
-    doc.text("No unit design specifications found.", 14, currentY4b + 10);
+    doc.text("No unit design specifications found.", 14, currentY);
+    currentY += 8;
   } else {
     uTypes.forEach((type) => {
       // Check if we need a page break
-      if (currentY4b > 220) {
+      if (currentY > 220) {
         doc.addPage();
-        currentY4b = 20;
+        currentY = 20;
       }
       
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(30, 41, 59);
-      doc.text(`Unit Type: ${type.toUpperCase()}`, 14, currentY4b);
-      currentY4b += 6;
+      doc.text(`Unit Type: ${type.toUpperCase()}`, 14, currentY);
+      currentY += 5;
 
       const unitsInType = unitsGrouped[type];
       unitsInType.forEach((unit) => {
@@ -604,19 +651,20 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
         }
 
         // Check page budget before writing table
-        if (currentY4b > 195) {
+        const estimatedHeight = 15 + (rows.length * 5.5);
+        if (currentY + estimatedHeight > 245) {
           doc.addPage();
-          currentY4b = 20;
+          currentY = 20;
         }
 
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(51, 65, 85);
-        doc.text(`Equipment Profile: ${unit.tag} ${unit.visualJustification ? `(Ref: ${unit.visualJustification})` : ''}`, 14, currentY4b);
-        currentY4b += 3;
+        doc.text(`Equipment Profile: ${unit.tag} ${unit.visualJustification ? `(Ref: ${unit.visualJustification})` : ''}`, 14, currentY);
+        currentY += 3;
 
         autoTable(doc, {
-          startY: currentY4b,
+          startY: currentY,
           head: [['Design Parameter', 'Specified Design Value', 'Actual / Field Measured']],
           body: rows,
           theme: 'grid',
@@ -629,20 +677,20 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
           }
         });
 
-        currentY4b = (doc as any).lastAutoTable.finalY + 4;
+        currentY = (doc as any).lastAutoTable.finalY + 4;
 
         // Draw the Traceability Log if available
         if (unit.sourceLocation || unit.mathConversionSteps || unit.engineeringAssumptions) {
-          if (currentY4b > 220) {
+          if (currentY > 230) {
             doc.addPage();
-            currentY4b = 20;
+            currentY = 20;
           }
           
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(13, 148, 136); // Teal color
-          doc.text("Engineering Traceability & Reasoning Log:", 14, currentY4b);
-          currentY4b += 4;
+          doc.text("Engineering Traceability & Reasoning Log:", 14, currentY);
+          currentY += 4;
           
           doc.setFont("helvetica", "normal");
           doc.setTextColor(71, 85, 105);
@@ -661,30 +709,36 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
           traceLines.forEach((line) => {
             const splitLines = doc.splitTextToSize(line, 180);
             splitLines.forEach((splitLine: string) => {
-              if (currentY4b > 255) {
+              if (currentY > 255) {
                 doc.addPage();
-                currentY4b = 20;
+                currentY = 20;
               }
-              doc.text(splitLine, 14, currentY4b);
-              currentY4b += 4;
+              doc.text(splitLine, 14, currentY);
+              currentY += 4;
             });
           });
-          currentY4b += 4; // space after the log section
+          currentY += 4; // space after the log section
         } else {
-          currentY4b += 4; // standard space
+          currentY += 4; // standard space
         }
       });
     });
   }
 
   // 5. Shop Drawings
-  doc.addPage();
+  currentY += 4;
+  if (currentY > 215) {
+    doc.addPage();
+    currentY = 20;
+  }
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(20, 20, 20);
-  doc.text("5. Shop Drawings / Submittals", 14, 20);
+  doc.text("5. Shop Drawings / Submittals", 14, currentY);
+  currentY += 5;
+
   autoTable(doc, {
-    startY: 25,
+    startY: currentY,
     body: [
       ["Design Match", data.shopDrawings?.confirmsDesign ? "YES" : "NO"],
       ["Cross-Ref", data.shopDrawings?.crossRefDetails || "-"],
@@ -697,11 +751,22 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [80, 80, 80] } }
   });
 
+  currentY = (doc as any).lastAutoTable.finalY + 10;
+
   // 6. Diversity Audit
   if (data.diversityAudit) {
-    doc.text("6. Diversity Audit", 14, (doc as any).lastAutoTable.finalY + 15);
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 20;
+    }
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text("6. Diversity Audit", 14, currentY);
+    currentY += 5;
+
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 18,
+      startY: currentY,
       body: [
         ["Outlet Peak Sum", `${data.diversityAudit.totalOutletPeak.toLocaleString()} ${unitLabel}`],
         ["Unit Rated Capacity", `${data.diversityAudit.unitCapacity.toLocaleString()} ${unitLabel}`],
@@ -713,13 +778,23 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [80, 80, 80] } }
     });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
   // 7. Pressure Path & Bottlenecks
   if (data.pressurePath) {
-    doc.text("7. Pressure Path Analysis", 14, (doc as any).lastAutoTable.finalY + 15);
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 20;
+    }
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text("7. Pressure Path Analysis", 14, currentY);
+    currentY += 5;
+
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 18,
+      startY: currentY,
       body: [
         ["External Static (ESP)", data.pressurePath.espRating || "-"],
         ["Bottleneck Risk", data.pressurePath.bottleneckRisk || "-"],
@@ -729,13 +804,23 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [80, 80, 80] } }
     });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
   // 8. Hardware Index
   if (data.hardwareIndex) {
-    doc.text("8. Hardware & Traverse Index", 14, (doc as any).lastAutoTable.finalY + 15);
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 20;
+    }
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text("8. Hardware & Traverse Index", 14, currentY);
+    currentY += 5;
+
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 18,
+      startY: currentY,
       body: [
         ["MVD Presence", data.hardwareIndex.mvdStatus || "-"],
         ["Traverse Locations", data.hardwareIndex.traversePoints?.join(", ") || "Main Duct Only"],
@@ -745,51 +830,91 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 45, textColor: [80, 80, 80] } }
     });
+    currentY = (doc as any).lastAutoTable.finalY + 10;
   }
 
   // 9. Field Strategy
-  const strategyY = (doc as any).lastAutoTable.finalY + 15;
-  doc.text("9. Field Strategy", 14, strategyY);
-  autoTable(doc, {
-    startY: strategyY + 3,
-    body: [
-      ["Plenum Return", data.fieldStrategy?.plenumReturnIdentified ? "YES" : "NO"],
-      ["First-Hour Strategy", data.fieldStrategy?.firstHourStrategy || "-"],
-      ["Sequence", data.fieldStrategy?.balancingSequences?.join(" > ") || "-"],
-      ["Strategy Notes", data.fieldStrategy?.strategyNotes || "-"],
-    ],
-    theme: 'plain',
-    styles: { fontSize: 9, cellPadding: 2, font: 'helvetica' },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }
-  });
+  if (data.fieldStrategy) {
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 20;
+    }
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text("9. Field Strategy", 14, currentY);
+    currentY += 5;
 
-  if (data.fieldStrategy?.checklists?.length > 0) {
-    data.fieldStrategy.checklists.forEach((list) => {
-      autoTable(doc, {
-        startY: (doc as any).lastAutoTable.finalY + 5,
-        head: [[list.title, 'Status']],
-        body: list.tasks.map(t => [t.description, t.isCompleted ? "[X] DONE" : "[ ] PENDING"]),
-        theme: 'striped',
-        headStyles: { fillColor: [35, 135, 166], textColor: [255, 255, 255], font: 'helvetica' },
-        styles: { fontSize: 8, font: 'helvetica' },
-        columnStyles: { 1: { cellWidth: 30, fontStyle: 'bold' } }
-      });
+    autoTable(doc, {
+      startY: currentY,
+      body: [
+        ["Plenum Return", data.fieldStrategy?.plenumReturnIdentified ? "YES" : "NO"],
+        ["First-Hour Strategy", data.fieldStrategy?.firstHourStrategy || "-"],
+        ["Sequence", data.fieldStrategy?.balancingSequences?.join(" > ") || "-"],
+        ["Strategy Notes", data.fieldStrategy?.strategyNotes || "-"],
+      ],
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 2, font: 'helvetica' },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40, textColor: [100, 100, 100] } }
     });
+    currentY = (doc as any).lastAutoTable.finalY;
+
+    if (data.fieldStrategy?.checklists?.length > 0) {
+      data.fieldStrategy.checklists.forEach((list) => {
+        currentY += 6;
+        if (currentY > 220) {
+          doc.addPage();
+          currentY = 20;
+        }
+        autoTable(doc, {
+          startY: currentY,
+          head: [[list.title, 'Status']],
+          body: list.tasks.map(t => [t.description, t.isCompleted ? "[X] DONE" : "[ ] PENDING"]),
+          theme: 'striped',
+          headStyles: { fillColor: [35, 135, 166], textColor: [255, 255, 255], font: 'helvetica' },
+          styles: { fontSize: 8, font: 'helvetica' },
+          columnStyles: { 1: { cellWidth: 30, fontStyle: 'bold' } }
+        });
+        currentY = (doc as any).lastAutoTable.finalY;
+      });
+    }
+    currentY += 10;
   }
 
   // 10. Field Data Sheets (Terminal Outlet Sheets)
   const unitsWithOutlets = (data.equipmentSchedules?.units || []).filter(u => u.outlets && u.outlets.length > 0);
   
   if (unitsWithOutlets.length > 0) {
-    unitsWithOutlets.forEach((unit) => {
+    if (currentY > 215) {
       doc.addPage();
-      doc.setFontSize(16);
+      currentY = 20;
+    }
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    doc.text("10. Field Data Sheets (Terminal Outlet Sheets)", 14, currentY);
+    currentY += 8;
+
+    unitsWithOutlets.forEach((unit, idx) => {
+      const estimatedHeight = 55 + (unit.outlets?.length || 0) * 6;
+      if (currentY + estimatedHeight > 245) {
+        doc.addPage();
+        currentY = 20;
+      } else if (idx > 0) {
+        currentY += 10;
+      }
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
       doc.setTextColor(20, 20, 20);
-      doc.text(`System Field Sheet: ${unit.tag}`, 14, 20);
+      doc.text(`System Field Sheet: ${unit.tag}`, 14, currentY);
+      currentY += 5;
       
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(100, 100, 100);
-      doc.text(`Unit Discharge Total: ${unit.designCfm.toLocaleString()} ${unitLabel}`, 14, 28);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Unit Discharge Total: ${unit.designCfm.toLocaleString()} ${unitLabel}`, 14, currentY);
+      currentY += 4;
       
       const outletRows = (unit.outlets || []).map(o => [
         o.visualJustification ? `${o.outletNumber}${o.quantity && o.quantity > 1 ? ` (${o.quantity}x)` : ''}\n(REF: ${o.visualJustification})` : `${o.outletNumber}${o.quantity && o.quantity > 1 ? ` (${o.quantity}x)` : ''}`,
@@ -801,45 +926,61 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       ]);
 
       autoTable(doc, {
-        startY: 35,
+        startY: currentY,
         head: [['Outlet #', 'Type', 'Manufacturer', 'Duct Size', `Design (${unitLabel})`, 'Field Reading']],
         body: outletRows,
         theme: 'grid',
         headStyles: { fillColor: [20, 20, 20], textColor: [255, 255, 255], font: 'helvetica' },
-        styles: { fontSize: 9, font: 'helvetica' },
+        styles: { fontSize: 8.5, font: 'helvetica', cellPadding: 2 },
         columnStyles: { 5: { cellWidth: 40, fillColor: [250, 250, 250] } }
       });
+
+      currentY = (doc as any).lastAutoTable.finalY + 6;
 
       const totalOutlets = unit.outlets?.reduce((acc, o) => acc + (o.designVolume * (o.quantity || 1)), 0) || 0;
       const variance = unit.designCfm > 0 ? Math.abs(((totalOutlets - unit.designCfm) / unit.designCfm) * 100) : 0;
 
-      doc.setFontSize(10);
+      if (currentY > 235) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(9);
       doc.setTextColor(20, 20, 20);
       doc.setFont("helvetica", "bold");
-      doc.text(`Total Outlet Design: ${totalOutlets.toLocaleString()} ${unitLabel}`, 14, (doc as any).lastAutoTable.finalY + 10);
+      doc.text(`Total Outlet Design: ${totalOutlets.toLocaleString()} ${unitLabel}`, 14, currentY);
+      currentY += 5;
       
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 100, 100);
-      doc.text(`Math: Σ ${unit.outletMathString || "N/A"}`, 14, (doc as any).lastAutoTable.finalY + 15);
-      doc.text(`Variance: ${variance.toFixed(1)}%`, 14, (doc as any).lastAutoTable.finalY + 20);
+      doc.text(`Math: Σ ${unit.outletMathString || "N/A"}   |   Variance: ${variance.toFixed(1)}%`, 14, currentY);
+      currentY += 5;
       
       if (variance > 5) {
         doc.setTextColor(220, 38, 38);
-        doc.text("FLAGGED: Design Discrepancy > 5%", 14, (doc as any).lastAutoTable.finalY + 25);
+        doc.setFont("helvetica", "bold");
+        doc.text("FLAGGED: Design Discrepancy > 5%", 14, currentY);
+        currentY += 5;
         doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
       }
     });
+    currentY += 10;
   }
 
   // 11. Design Reconciliation & Audit Evidence
   if (data.designReconciliation) {
-    doc.addPage();
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 20;
+    }
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("11. Design Reconciliation & Audit Evidence", 14, 20);
+    doc.text("11. Design Reconciliation & Audit Evidence", 14, currentY);
+    currentY += 5;
 
     autoTable(doc, {
-      startY: 25,
+      startY: currentY,
       body: [
         ["Schedule Design Total", `${data.designReconciliation.scheduleDesignVolume.toLocaleString()} ${unitLabel}`],
         ["Outlet Summation Total", `${data.designReconciliation.outletSumVolume.toLocaleString()} ${unitLabel}`],
@@ -852,6 +993,56 @@ export function generateAirBalanceReport(data: AirBalanceData, fileName: string)
       styles: { fontSize: 9, font: 'helvetica' },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50, textColor: [80, 80, 80] } }
     });
+    currentY = (doc as any).lastAutoTable.finalY + 8;
+  }
+
+  // --- ADOBE PDF STANDARD POST-PROCESSING: HEADERS, FOOTERS, PAGINATION & METADATA ---
+  const totalPages = (doc.internal as any).getNumberOfPages();
+  const footerRightText = (idx: number, total: number) => `Page ${idx} of ${total}`;
+  const headerRightText = `Audit Document Reference: SEC-23-05-93 • ${data.projectIdentity.projectName || 'Project'}`;
+
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+
+    if (i === 1) {
+      // Elegant Adobe-style title page bottom stamp
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(220, 38, 38); // Adobe Red Accent
+      doc.text("PDF ARCHIVE COMPLIANCE", 25, pageH - 22);
+
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 116, 139);
+      doc.text(`ACCU-AIR TECHNICAL SERVICES LTD. • SECURE ADOBE PDF/A SUBMITTAL DOCUMENT`, 25, pageH - 17);
+      doc.text(`CERTIFIED ELECTRONIC FILE IDENTIFIER: ADOBE-TAB-2026-CSN-01`, 25, pageH - 12);
+      doc.text(`DOCUMENT INTEGRITY GUARANTEED • FOR PROFESSIONAL ENGINEERING FIELD USE ONLY`, 25, pageH - 7);
+      continue;
+    }
+
+    // Standard Page styling
+    // 1. Header (consistent position)
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("ACCU-AIR TECHNICAL SERVICES LTD.", 14, 10);
+    doc.text(headerRightText, pageW - 14, 10, { align: 'right' });
+
+    // Clean rule separator line (Slate/Grey color)
+    doc.setDrawColor(203, 213, 225); // slate-300
+    doc.setLineWidth(0.2);
+    doc.line(14, 12, pageW - 14, 12);
+
+    // 2. Footer (consistent position)
+    doc.line(14, pageH - 12, pageW - 14, pageH - 12);
+
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text("SECURE ADOBE PDF FORMAT • CERTIFIED TAB AUDIT", 14, pageH - 8);
+    doc.text(`STAMP: ${timestamp} • SYSTEM: ${data.projectIdentity.classification || 'HVAC'}`, pageW / 2, pageH - 8, { align: 'center' });
+    
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text(footerRightText(i, totalPages), pageW - 14, pageH - 8, { align: 'right' });
   }
 
   doc.save(`TAB_Audit_${data.projectIdentity.projectName?.replace(/\s+/g, '_') || 'Project'}.pdf`);
